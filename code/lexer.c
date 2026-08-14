@@ -143,3 +143,18 @@ local token* Tokenize(string Code)
     return (First);
 }
 
+local usize TokenToInteger(token* Token)
+{
+    // NOTE(vak): Assuming Token->Kind == TokenKind_Integer
+
+    usize Result = 0;
+
+    for (usize Index = 0; Index < Token->String.Size; Index++)
+    {
+        Result *= 10;
+        Result += (Token->String.Data[Index] - '0');
+    }
+
+    return (Result);
+}
+

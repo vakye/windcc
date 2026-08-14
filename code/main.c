@@ -1,153 +1,16 @@
 
 #pragma once
 
-local usize TokenToInteger(token* Token)
-{
-    // NOTE(vak): Assuming Token->Kind == TokenKind_Integer
-
-    usize Result = 0;
-
-    for (usize Index = 0; Index < Token->String.Size; Index++)
-    {
-        Result *= 10;
-        Result += (Token->String.Data[Index] - '0');
-    }
-
-    return (Result);
-}
-
 typedef ssize program_entry_point(void);
 
 local ssize CompileAndRun(string Code)
 {
-    token* Token = Tokenize(Code);
+    u8 Assembly[512] = {0};
 
-    usize NumberA = 0;
-    char Operator = 0;
-    usize NumberB = 0;
+    token* FirstToken = Tokenize(Code);
+    node* RootNode = Parse(FirstToken);
 
-    if (Token->Kind != TokenKind_Integer)
-    {
-        Println(Str("ERROR: Expected an integer"));
-        Exit(1);
-    }
-
-    NumberA = TokenToInteger(Token);
-    Token = Token->Next;
-
-    switch (Token->Kind)
-    {
-        default:
-        {
-            Println(Str("ERROR: Syntax error"));
-            Exit(1);
-        } break;
-
-        case TokenKind_EOF:
-        {
-        } break;
-
-        case '+':
-        case '-':
-        case '*':
-        case '/':
-        case '%':
-        {
-            Operator = Token->Kind;
-            Token = Token->Next;
-
-            if (Token->Kind != TokenKind_Integer)
-            {
-                Println(Str("ERROR: Expected an integer"));
-                Exit(1);
-            }
-
-            NumberB = TokenToInteger(Token);
-            Token = Token->Next;
-        } break;
-    }
-
-    if (Token->Kind != TokenKind_EOF)
-    {
-        Println(Str("ERROR: Syntax error"));
-        Exit(1);
-    }
-
-    u8 Assembly[256] = {0};
-    usize AssemblySize = 0;
-
-    // NOTE(vak):
-    // 48 b8 (Imm64) mov rax, NumberA
-    {
-        Assembly[AssemblySize++] = 0x48;
-        Assembly[AssemblySize++] = 0xb8;
-        CopyMemory(Assembly + AssemblySize, &NumberA, 8);
-        AssemblySize += 8;
-    }
-
-    if (Operator)
-    {
-        // NOTE(vak):
-        // 48 b9 (Imm64) mov rcx, NumberB
-        {
-            Assembly[AssemblySize++] = 0x48;
-            Assembly[AssemblySize++] = 0xb9;
-            CopyMemory(Assembly + AssemblySize, &NumberB, 8);
-            AssemblySize += 8;
-        }
-
-        u64 Instructions = 0;
-        u64 InstructionsSize = 0;
-
-        switch (Operator)
-        {
-            default:
-            {
-                Print(Str("ERROR: '"));
-                PrintCharacter(Operator);
-                Print(Str("' is not a valid operator."));
-                PrintNewLine();
-                Exit(1);
-            } break;
-
-            case '\0':
-            {
-                // NOTE(vak): No operator, return a single number
-            } break;
-
-            // NOTE(vak):
-            // 48 03 c1         add rax, rcx
-            case '+': Instructions = 0xc10348; InstructionsSize = 3; break;
-
-            // NOTE(vak):
-            // 48 2b c1         sub rax, rcx
-            case '-': Instructions = 0xc12b48; InstructionsSize = 3; break;
-
-            // NOTE(vak):
-            // 48 0f af c1     imul rax, rcx
-            case '*': Instructions = 0xc1af0f48; InstructionsSize = 4; break;
-
-            // NOTE(vak):
-            // 48 99            cqo
-            // 48 f7 f9         idiv rcx
-            case '/': Instructions = 0xf9f7489948; InstructionsSize = 5; break;
-
-            // NOTE(vak):
-            // 48 99            cqo
-            // 48 f7 f9         idiv rcx
-            // 48 8b c2         mov rax, rdx
-            case '%': Instructions = 0xc28b48f9f7489948; InstructionsSize = 8; break;
-        }
-
-        CopyMemory(Assembly + AssemblySize, &Instructions, InstructionsSize);
-        AssemblySize += InstructionsSize;
-    }
-
-    // NOTE(vak):
-    // c3 ret
-    {
-        Assembly[AssemblySize++] = 0xc3;
-    }
+    usize AssemblySize = Generate(Assembly, sizeof(Assembly), RootNode);
 
     program_entry_point* ProgramEntry = (program_entry_point*)
         MapExecutableMemory(Assembly, AssemblySize);
@@ -187,6 +50,11 @@ local void Main(void)
         {  1,               StaticStr("5 / 3") },
         {  4,               StaticStr("28471824 % 13") },
         {  2,               StaticStr("284 % 3") },
+        {  1200,            StaticStr("  120/ 2*( 10+  10)  ") },
+        {  610,             StaticStr("120 / 2*10 + 10") },
+        {  603,             StaticStr("120 / 2*10 + 10 % 7") },
+        {  3,               StaticStr("120 / 2*(10 + 10) % 7") },
+        { -60,              StaticStr("(120 / 2) * (5 - 10 + 4)") },
     };
 
     for (usize TestIndex = 0; TestIndex < ArrayCount(TestCases); TestIndex++)
@@ -194,7 +62,7 @@ local void Main(void)
         test_case* TestCase = TestCases + TestIndex;
 
         Print(Str("TestCases["));
-        PrintUSize(TestIndex);
+        RightPadOutput(PrintUSize(TestIndex), 2);
         Print(Str("]: "));
 
         ssize RunResult = CompileAndRun(TestCase->Code);
