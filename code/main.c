@@ -5,12 +5,13 @@ typedef ssize program_entry_point(void);
 
 local ssize CompileAndRun(string Code)
 {
-    u8 Assembly[512] = {0};
-
     token* FirstToken = Tokenize(Code);
     node* RootNode = Parse(FirstToken);
 
-    usize AssemblySize = Generate(Assembly, sizeof(Assembly), RootNode);
+    usize AssemblySize = Generate(0, 0, RootNode);
+    void* Assembly = Allocate(AssemblySize);
+
+    Generate(Assembly, AssemblySize, RootNode);
 
     program_entry_point* ProgramEntry = (program_entry_point*)
         MapExecutableMemory(Assembly, AssemblySize);
