@@ -1,81 +1,16 @@
 
 #pragma once
 
-local b32 IsWhitespace(char Character)
+local usize TokenToInteger(token* Token)
 {
-    b32 Result =
-        (Character == ' ') ||
-        (Character == '\r') ||
-        (Character == '\t') ||
-        (Character == '\n');
+    // NOTE(vak): Assuming Token->Kind == TokenKind_Integer
 
-    return (Result);
-}
-
-local b32 IsDigit(char Character)
-{
-    b32 Result = ((Character >= '0') && (Character <= '9'));
-    return (Result);
-}
-
-local void SkipWhitespace(string* String)
-{
-    while (String->Size)
-    {
-        char Character = String->Data[0];
-
-        if (!IsWhitespace(Character))
-            break;
-
-        String->Data++;
-        String->Size--;
-    }
-}
-
-local usize ConsumeInteger(string* String)
-{
     usize Result = 0;
 
-    SkipWhitespace(String);
-
-    if (String->Size)
+    for (usize Index = 0; Index < Token->String.Size; Index++)
     {
-        if (!IsDigit(String->Data[0]))
-        {
-            Println(Str("ERROR: Expected an integer"));
-            Exit(1);
-        }
-    }
-
-    while (String->Size)
-    {
-        char Character = String->Data[0];
-
-        if (!IsDigit(Character))
-            break;
-
         Result *= 10;
-        Result += (Character - '0');
-
-        String->Data++;
-        String->Size--;
-    }
-
-    return (Result);
-}
-
-local char ConsumeOperator(string* String)
-{
-    char Result = 0;
-
-    SkipWhitespace(String);
-
-    if (String->Size)
-    {
-        Result = String->Data[0];
-
-        String->Data++;
-        String->Size--;
+        Result += (Token->String.Data[Index] - '0');
     }
 
     return (Result);
@@ -85,9 +20,58 @@ typedef ssize program_entry_point(void);
 
 local ssize CompileAndRun(string Code)
 {
-    usize NumberA   = ConsumeInteger(&Code);
-    char  Operator  = ConsumeOperator(&Code);
-    usize NumberB   = ConsumeInteger(&Code);
+    token* Token = Tokenize(Code);
+
+    usize NumberA = 0;
+    char Operator = 0;
+    usize NumberB = 0;
+
+    if (Token->Kind != TokenKind_Integer)
+    {
+        Println(Str("ERROR: Expected an integer"));
+        Exit(1);
+    }
+
+    NumberA = TokenToInteger(Token);
+    Token = Token->Next;
+
+    switch (Token->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: Syntax error"));
+            Exit(1);
+        } break;
+
+        case TokenKind_EOF:
+        {
+        } break;
+
+        case '+':
+        case '-':
+        case '*':
+        case '/':
+        case '%':
+        {
+            Operator = Token->Kind;
+            Token = Token->Next;
+
+            if (Token->Kind != TokenKind_Integer)
+            {
+                Println(Str("ERROR: Expected an integer"));
+                Exit(1);
+            }
+
+            NumberB = TokenToInteger(Token);
+            Token = Token->Next;
+        } break;
+    }
+
+    if (Token->Kind != TokenKind_EOF)
+    {
+        Println(Str("ERROR: Syntax error"));
+        Exit(1);
+    }
 
     u8 Assembly[256] = {0};
     usize AssemblySize = 0;
@@ -101,60 +85,63 @@ local ssize CompileAndRun(string Code)
         AssemblySize += 8;
     }
 
-    // NOTE(vak):
-    // 48 b9 (Imm64) mov rcx, NumberB
+    if (Operator)
     {
-        Assembly[AssemblySize++] = 0x48;
-        Assembly[AssemblySize++] = 0xb9;
-        CopyMemory(Assembly + AssemblySize, &NumberB, 8);
-        AssemblySize += 8;
-    }
-
-    u64 Instructions = 0;
-    u64 InstructionsSize = 0;
-
-    switch (Operator)
-    {
-        default:
+        // NOTE(vak):
+        // 48 b9 (Imm64) mov rcx, NumberB
         {
-            Print(Str("ERROR: '"));
-            PrintCharacter(Operator);
-            Print(Str("' is not a valid operator."));
-            PrintNewLine();
-            Exit(1);
-        } break;
+            Assembly[AssemblySize++] = 0x48;
+            Assembly[AssemblySize++] = 0xb9;
+            CopyMemory(Assembly + AssemblySize, &NumberB, 8);
+            AssemblySize += 8;
+        }
 
-        case '\0':
+        u64 Instructions = 0;
+        u64 InstructionsSize = 0;
+
+        switch (Operator)
         {
-            // NOTE(vak): No operator, return a single number
-        } break;
+            default:
+            {
+                Print(Str("ERROR: '"));
+                PrintCharacter(Operator);
+                Print(Str("' is not a valid operator."));
+                PrintNewLine();
+                Exit(1);
+            } break;
 
-        // NOTE(vak):
-        // 48 03 c1         add rax, rcx
-        case '+': Instructions = 0xc10348; InstructionsSize = 3; break;
+            case '\0':
+            {
+                // NOTE(vak): No operator, return a single number
+            } break;
 
-        // NOTE(vak):
-        // 48 2b c1         sub rax, rcx
-        case '-': Instructions = 0xc12b48; InstructionsSize = 3; break;
+            // NOTE(vak):
+            // 48 03 c1         add rax, rcx
+            case '+': Instructions = 0xc10348; InstructionsSize = 3; break;
 
-        // NOTE(vak):
-        // 48 0f af c1     imul rax, rcx
-        case '*': Instructions = 0xc1af0f48; InstructionsSize = 4; break;
+            // NOTE(vak):
+            // 48 2b c1         sub rax, rcx
+            case '-': Instructions = 0xc12b48; InstructionsSize = 3; break;
 
-        // NOTE(vak):
-        // 48 99            cqo
-        // 48 f7 f9         idiv rcx
-        case '/': Instructions = 0xf9f7489948; InstructionsSize = 5; break;
+            // NOTE(vak):
+            // 48 0f af c1     imul rax, rcx
+            case '*': Instructions = 0xc1af0f48; InstructionsSize = 4; break;
 
-        // NOTE(vak):
-        // 48 99            cqo
-        // 48 f7 f9         idiv rcx
-        // 48 8b c2         mov rax, rdx
-        case '%': Instructions = 0xc28b48f9f7489948; InstructionsSize = 8; break;
+            // NOTE(vak):
+            // 48 99            cqo
+            // 48 f7 f9         idiv rcx
+            case '/': Instructions = 0xf9f7489948; InstructionsSize = 5; break;
+
+            // NOTE(vak):
+            // 48 99            cqo
+            // 48 f7 f9         idiv rcx
+            // 48 8b c2         mov rax, rdx
+            case '%': Instructions = 0xc28b48f9f7489948; InstructionsSize = 8; break;
+        }
+
+        CopyMemory(Assembly + AssemblySize, &Instructions, InstructionsSize);
+        AssemblySize += InstructionsSize;
     }
-
-    CopyMemory(Assembly + AssemblySize, &Instructions, InstructionsSize);
-    AssemblySize += InstructionsSize;
 
     // NOTE(vak):
     // c3 ret

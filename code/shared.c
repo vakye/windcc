@@ -32,6 +32,8 @@
 
 #define CTAssert(Expression) _Static_assert(Expression, "Compile-time assertion failed")
 
+#define AlwaysAssert(Expression) if (!(Expression)) { __builtin_trap(); }
+
 #define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
 
 #define Minimum(A, B) ((A) < (B) ? (A) : (B))
@@ -123,4 +125,12 @@ typedef struct
 
 #define Str(Literal) (string){Literal, sizeof(Literal) - 1}
 #define StrData(Data, Size) (string){Data, Size}
+
+local string StringView(string String, usize From, usize Size)
+{
+    AlwaysAssert(From + Size <= String.Size);
+
+    string Result = StrData(String.Data + From, Size);
+    return (Result);
+}
 
