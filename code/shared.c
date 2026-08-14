@@ -1,0 +1,116 @@
+
+#pragma once
+
+#if defined(_WIN32) || defined(_WIN64)
+#define PlatformWindows (1)
+#elif defined(__linux__)
+#define PlatformLinux (1)
+#else
+#error Unknown platform
+#endif
+
+#if !defined(PlatformWindows)
+#define PlatformWindows (0)
+#endif
+
+#if !defined(PlatformLinux)
+#define PlatformLinux (0)
+#endif
+
+#if defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
+#define ArchitectureX64 (1)
+#else
+#error Unknown architecture
+#endif
+
+#if !defined(ArchitectureX64)
+#define ArchitectureX64 (0)
+#endif
+
+#define local static
+#define persist static
+
+#define CTAssert(Expression) _Static_assert(Expression, "Compile-time assertion failed")
+
+#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+
+#define Minimum(A, B) ((A) < (B) ? (A) : (B))
+#define Maximum(A, B) ((A) > (B) ? (A) : (B))
+
+typedef signed char s8;
+typedef signed short s16;
+typedef signed int s32;
+typedef signed long long s64;
+
+typedef unsigned char u8;
+typedef unsigned short u16;
+typedef unsigned int u32;
+typedef unsigned long long u64;
+
+typedef s64 ssize;
+typedef u64 usize;
+
+typedef float f32;
+typedef double f64;
+
+typedef u8 b8;
+typedef u32 b32;
+
+#define true  (1)
+#define false (0)
+
+#define USizeBits (sizeof(usize) * 8)
+
+CTAssert(sizeof(s8)  == 1);
+CTAssert(sizeof(s16) == 2);
+CTAssert(sizeof(s32) == 4);
+CTAssert(sizeof(s64) == 8);
+
+CTAssert(sizeof(u8)  == 1);
+CTAssert(sizeof(u16) == 2);
+CTAssert(sizeof(u32) == 4);
+CTAssert(sizeof(u64) == 8);
+
+CTAssert(sizeof(ssize) == sizeof(void*));
+CTAssert(sizeof(usize) == sizeof(void*));
+
+CTAssert(sizeof(f32) == 4);
+CTAssert(sizeof(f64) == 8);
+
+void* memset(void* DestInit, s32 Byte, usize Size)
+{
+    u8* Dest = (u8*)DestInit;
+
+    while (Size--)
+        *Dest++ = (u8)Byte;
+
+    return (DestInit);
+}
+
+void* memcpy(void* DestInit, void* SourceInit, usize Size)
+{
+    u8* Dest = (u8*)DestInit;
+    u8* Source = (u8*)SourceInit;
+
+    while (Size--)
+        *Dest++ = *Source++;
+
+    return (DestInit);
+}
+
+#define ZeroType(Pointer)           ZeroMemory(Pointer, sizeof(*(Pointer)))
+#define ZeroArray(Pointer, Count)   ZeroMemory(Pointer, sizeof(*(Pointer)) * (Count))
+
+local void ZeroMemory(void* DestInit, usize Size)                   { memset(DestInit, 0, Size); }
+local void FillMemory(void* DestInit, u8 Byte, usize Size)          { memset(DestInit, Byte, Size); }
+local void CopyMemory(void* DestInit, void* SourceInit, usize Size) { memcpy(DestInit, SourceInit, Size); }
+
+typedef struct
+{
+    char* Data;
+    usize Size;
+} string;
+
+#define Str(Literal) (string){Literal, sizeof(Literal) - 1}
+#define StrData(Data, Size) (string){Data, Size}
+
