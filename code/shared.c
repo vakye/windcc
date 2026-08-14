@@ -37,6 +37,13 @@
 #define Minimum(A, B) ((A) < (B) ? (A) : (B))
 #define Maximum(A, B) ((A) > (B) ? (A) : (B))
 
+#define KB(Amount) ((ssize)(Amount) << 10)
+#define MB(Amount) ((ssize)(Amount) << 20)
+#define GB(Amount) ((ssize)(Amount) << 30)
+#define TB(Amount) ((ssize)(Amount) << 40)
+
+#define AlignUp(Value, PowerOf2) (((Value) + (PowerOf2) - 1) & ~((PowerOf2) - 1))
+
 typedef signed char s8;
 typedef signed short s16;
 typedef signed int s32;

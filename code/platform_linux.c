@@ -3,10 +3,15 @@
 
 typedef enum
 {
+#if ArchitectureX64
     SyscallNumber_Write     = 1,
     SyscallNumber_MMap      = 9,
+    SyscallNumber_MProtect  = 10,
     SyscallNumber_MUnMap    = 11,
     SyscallNumber_Exit      = 60,
+#else
+#error Linux syscall numbers are not defined for this architecture
+#endif
 } syscall_number;
 
 #define STDOUT_FILENO (1)
@@ -48,6 +53,71 @@ local usize LinuxSyscall(
 #else
 #error LinuxSyscall is not implemented for this architecture
 #endif
+
+    return (Result);
+}
+
+local void* LinuxSetupMemory(usize Commited, usize Reserved)
+{
+    ssize MapResult = (ssize)LinuxSyscall(
+        SyscallNumber_MMap,
+        0,
+        Reserved,
+        PROT_NONE,
+        MAP_PRIVATE|MAP_ANONYMOUS,
+        -1,
+        0
+    );
+
+    if (MapResult < 0)
+        Exit(-MapResult);
+
+    void* BaseAddress = (void*)MapResult;
+
+    ssize CommitResult = (ssize)LinuxSyscall(
+        SyscallNumber_MProtect,
+        (usize)BaseAddress,
+        Commited,
+        PROT_READ|PROT_WRITE,
+        0, 0, 0
+    );
+
+    if (CommitResult < 0)
+        Exit(-CommitResult);
+
+    return (BaseAddress);
+}
+
+local void* Allocate(usize Size)
+{
+    persist void* Base = 0;
+    persist usize Used = 0;
+    persist usize Commited = MB(16);
+    persist usize Reserved = GB(64);
+
+    if (!Base)
+        Base = LinuxSetupMemory(Commited, Reserved);
+
+    if (Used + Size > Commited)
+    {
+        usize ExpandSize = (Used + Size) - Commited;
+        usize CommitSize = AlignUp(ExpandSize, MB(1));
+        void* CommitAt   = (u8*)Base + Commited;
+
+        ssize CommitResult = (ssize)LinuxSyscall(
+            SyscallNumber_MProtect,
+            (usize)CommitAt,
+            CommitSize,
+            PROT_READ|PROT_WRITE,
+            0, 0, 0
+        );
+
+        if (CommitResult < 0)
+            Exit(-CommitResult);
+    }
+    
+    void* Result = (u8*)Base + Used;
+    Used += Size;
 
     return (Result);
 }
