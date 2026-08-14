@@ -111,6 +111,9 @@ typedef struct
     usize Size;
 } string;
 
+#define StaticStr(Literal) {Literal, sizeof(Literal) - 1}
+#define StaticStrData(Data, Size) {Data, Size}
+
 #define Str(Literal) (string){Literal, sizeof(Literal) - 1}
 #define StrData(Data, Size) (string){Data, Size}
 
