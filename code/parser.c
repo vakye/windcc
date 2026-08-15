@@ -6,6 +6,11 @@ typedef enum
     NodeKind_Nil = 0,
 
     NodeKind_Integer,
+
+    NodeKind_Negate,
+    NodeKind_LogicalNot,
+    NodeKind_BitwiseNot,
+
     NodeKind_Add,
     NodeKind_Sub,
     NodeKind_Mul,
@@ -21,6 +26,10 @@ typedef enum
 
     NodeKind_ShiftLeft,
     NodeKind_ShiftRight,
+
+    NodeKind_BitwiseAnd,
+    NodeKind_BitwiseXor,
+    NodeKind_BitwiseOr,
 } node_kind;
 
 typedef struct node node;
@@ -40,6 +49,14 @@ local node* AllocateNode(node_kind Kind, token* Token)
     ZeroType(Node);
     Node->Kind = Kind;
     Node->Token = Token;
+
+    return (Node);
+}
+
+local node* AllocateUnaryNode(node_kind Kind, token* Token, node* Left)
+{
+    node* Node = AllocateNode(Kind, Token);
+    Node->Left = Left;
 
     return (Node);
 }
@@ -91,9 +108,42 @@ local node* ParsePrimary(token** ParseAt)
     return (Node);
 }
 
+local node* ParsePrefix(token** ParseAt)
+{
+    node* Node = 0;
+
+    token* Token = *ParseAt;
+    if (Token->Kind == '-')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_Negate, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == '!')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_LogicalNot, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == '~')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_BitwiseNot, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == '+')
+    {
+        *ParseAt = Token->Next;
+        Node = ParsePrefix(ParseAt);
+    }
+    else
+    {
+        Node = ParsePrimary(ParseAt);
+    }
+
+    return (Node);
+}
+
 local node* ParseFactor(token** ParseAt)
 {
-    node* Node = ParsePrimary(ParseAt);
+    node* Node = ParsePrefix(ParseAt);
 
     for (;;)
     {
@@ -102,17 +152,17 @@ local node* ParseFactor(token** ParseAt)
         if (Token->Kind == '*')
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParsePrimary(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParsePrefix(ParseAt));
         }
         else if (Token->Kind == '/')
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Div, Token, Node, ParsePrimary(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Div, Token, Node, ParsePrefix(ParseAt));
         }
         else if (Token->Kind == '%')
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParsePrimary(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParsePrefix(ParseAt));
         }
         else
         {
@@ -241,9 +291,75 @@ local node* ParseEquality(token** ParseAt)
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseAnd(token** ParseAt)
 {
     node* Node = ParseEquality(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == '&')
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseEquality(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseXor(token** ParseAt)
+{
+    node* Node = ParseAnd(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == '^')
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAnd(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseOr(token** ParseAt)
+{
+    node* Node = ParseXor(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == '|')
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseXor(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseExpression(token** ParseAt)
+{
+    node* Node = ParseOr(ParseAt);
     return (Node);
 }
 

@@ -52,6 +52,36 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             Emit64(Gen, Node->Integer);
         } break;
 
+        case NodeKind_Negate:
+        {
+            GenerateNode(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 f7 d8         neg rax
+            Emit24(Gen, 0xd8f748);
+        } break;
+
+        case NodeKind_BitwiseNot:
+        {
+            GenerateNode(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 f7 d0         not rax
+            Emit24(Gen, 0xd0f748);
+        } break;
+
+        case NodeKind_LogicalNot:
+        {
+            GenerateNode(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 94 c0     setz al
+            // 48 0f b6 c0  movzx rax, al
+            Emit64(Gen, 0x0f48c0940fc08548);
+            Emit16(Gen, 0xc0b6);
+        } break;
+
         case NodeKind_Add:
         case NodeKind_Sub:
         case NodeKind_Mul:
@@ -59,6 +89,9 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
         case NodeKind_Mod:
         case NodeKind_ShiftLeft:
         case NodeKind_ShiftRight:
+        case NodeKind_BitwiseAnd:
+        case NodeKind_BitwiseXor:
+        case NodeKind_BitwiseOr:
         {
             // NOTE(vak): C doesn't seem to enforce a specific order of evaluation
             // so we can evaluate in whichever order we want as long as the results
@@ -101,6 +134,18 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 // NOTE(vak):
                 // 48 d3 f8         sar rax, cl
                 case NodeKind_ShiftRight: Emit24(Gen, 0xf8d348); break;
+
+                // NOTE(vak):
+                // 48 23 c1         and rax, rcx
+                case NodeKind_BitwiseAnd: Emit24(Gen, 0xc12348); break;
+
+                // NOTE(vak):
+                // 48 33 c1         xor rax, rcx
+                case NodeKind_BitwiseXor: Emit24(Gen, 0xc13348); break;
+
+                // NOTE(vak):
+                // 48 0b c1         or rax, rcx
+                case NodeKind_BitwiseOr: Emit24(Gen, 0xc10b48); break;
             }
         } break;
 
