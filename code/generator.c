@@ -1,11 +1,29 @@
 
 #pragma once
 
+#define InvalidLabelOffset (USizeMax)
+
+typedef struct
+{
+    usize Offset;
+} gen_label;
+
+typedef struct gen_rel32 gen_rel32;
+struct gen_rel32
+{
+    gen_label* Target;
+    usize Offset;
+    gen_rel32* Next;
+};
+
 typedef struct
 {
     u8* Base;
     usize Size;
     usize Used;
+
+    gen_rel32* FirstRel32;
+    gen_rel32* LastRel32;
 } gen_buffer;
 
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
@@ -30,6 +48,40 @@ local void Emit40(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 5);
 local void Emit48(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 6); }
 local void Emit56(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 7); }
 local void Emit64(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 8); }
+
+local gen_label* AllocateLabel(void)
+{
+    gen_label* Label = Allocate(sizeof(gen_label));
+    Label->Offset = InvalidLabelOffset;
+    return (Label);
+}
+
+local void PlaceLabel(gen_buffer* Gen, gen_label* Label)
+{
+    Label->Offset = Gen->Used;
+}
+
+local void EmitRel32(gen_buffer* Gen, gen_label* Target)
+{
+    gen_rel32* Rel32 = Allocate(sizeof(gen_rel32));
+    ZeroType(Rel32);
+
+    Rel32->Target = Target;
+    Rel32->Offset = Gen->Used;
+
+    Emit32(Gen, 0x00000000);
+
+    if (!Gen->FirstRel32)
+    {
+        Gen->FirstRel32 = Rel32;
+        Gen->LastRel32 = Rel32;
+    }
+    else
+    {
+        Gen->LastRel32->Next = Rel32;
+        Gen->LastRel32 = Rel32;
+    }
+}
 
 local void GenerateNode(gen_buffer* Gen, node* Node)
 {
@@ -179,6 +231,54 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 0f b6 c0  movzx rax, al
             Emit32(Gen, 0xc0b60f48);
         } break;
+
+        case NodeKind_LogicalAnd:
+        {
+            gen_label* SkipRight = AllocateLabel();
+
+            GenerateNode(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 84 Rel32  jz SkipRight
+            Emit40(Gen, 0x840fc08548);
+            EmitRel32(Gen, SkipRight);
+
+            GenerateNode(Gen, Node->Right);
+
+            PlaceLabel(Gen, SkipRight);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 95 c0     setnz al
+            // 48 0f b6 c0  movzx rax, al
+            Emit64(Gen, 0x0f48c0950fc08548);
+            Emit16(Gen, 0xc0b6);
+        } break;
+
+        case NodeKind_LogicalOr:
+        {
+            gen_label* SkipRight = AllocateLabel();
+
+            GenerateNode(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 85 Rel32  jnz SkipRight
+            Emit40(Gen, 0x850fc08548);
+            EmitRel32(Gen, SkipRight);
+
+            GenerateNode(Gen, Node->Right);
+
+            PlaceLabel(Gen, SkipRight);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 95 c0     setnz al
+            // 48 0f b6 c0  movzx rax, al
+            Emit64(Gen, 0x0f48c0950fc08548);
+            Emit16(Gen, 0xc0b6);
+        } break;
     }
 }
 
@@ -203,6 +303,37 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
     // 5d           pop rbp
     // c3           ret
     Emit40(&Gen, 0xc35de58b48);
+
+    // NOTE(vak): Fill in all rel32 displacements
+
+    for (
+        gen_rel32* Rel32 = Gen.FirstRel32;
+        Rel32;
+        Rel32 = Rel32->Next
+    )
+    {
+        gen_label* Label = Rel32->Target;
+
+        if (Label->Offset == InvalidLabelOffset)
+        {
+            Println(Str("ERROR: rel32 target label is invalid (not placed)"));
+            Exit(1);
+        }
+
+        ssize Disp = (ssize)Label->Offset - ((ssize)Rel32->Offset + 4);
+
+        if ((Disp < S32Min) || (Disp > S32Max))
+        {
+            Println(Str("ERROR: rel32 displacement is outside 32-bit signed integer boundaries"));
+            Exit(1);
+        }
+
+        if (Gen.Size)
+        {
+            s32* WriteAt = (s32*)(Gen.Base + Rel32->Offset);
+            *WriteAt = (s32)Disp;
+        }
+    }
 
     return (Gen.Used);
 }

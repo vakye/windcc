@@ -30,6 +30,9 @@ typedef enum
     NodeKind_BitwiseAnd,
     NodeKind_BitwiseXor,
     NodeKind_BitwiseOr,
+
+    NodeKind_LogicalAnd,
+    NodeKind_LogicalOr,
 } node_kind;
 
 typedef struct node node;
@@ -37,7 +40,9 @@ struct node
 {
     node_kind Kind;
     token* Token;
+
     usize Integer;
+
     node* Left;
     node* Right;
 };
@@ -357,9 +362,53 @@ local node* ParseOr(token** ParseAt)
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseLogicalAnd(token** ParseAt)
 {
     node* Node = ParseOr(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_DoubleAmpersand)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_LogicalAnd, Token, Node, ParseOr(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseLogicalOr(token** ParseAt)
+{
+    node* Node = ParseLogicalAnd(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_DoubleBar)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_LogicalOr, Token, Node, ParseLogicalAnd(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseExpression(token** ParseAt)
+{
+    node* Node = ParseLogicalOr(ParseAt);
     return (Node);
 }
 

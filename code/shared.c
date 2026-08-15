@@ -68,7 +68,11 @@ typedef u32 b32;
 #define true  (1)
 #define false (0)
 
+#define S32Min ((s32)(0x80000000))
+#define S32Max ((s32)(0x7FFFFFFF))
+
 #define USizeBits (sizeof(usize) * 8)
+#define USizeMax  (~((usize)0))
 
 CTAssert(sizeof(s8)  == 1);
 CTAssert(sizeof(s16) == 2);

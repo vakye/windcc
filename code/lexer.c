@@ -19,6 +19,8 @@ enum
     TokenKind_GreaterEqual      = '5', // NOTE(vak): ">="
     TokenKind_DoubleLess        = '6', // NOTE(vak): "<<"
     TokenKind_DoubleGreater     = '7', // NOTE(vak): ">>"
+    TokenKind_DoubleAmpersand   = '8', // NOTE(vak): "&&"
+    TokenKind_DoubleBar         = '9', // NOTE(vak): "||"
 };
 
 typedef struct token token;
@@ -153,6 +155,9 @@ local token* Tokenize(string Code)
 
                     MatchCase('<', '<', TokenKind_DoubleLess);
                     MatchCase('>', '>', TokenKind_DoubleGreater);
+
+                    MatchCase('&', '&', TokenKind_DoubleAmpersand);
+                    MatchCase('|', '|', TokenKind_DoubleBar);
 
                     #undef MatchCase
                 }

@@ -110,6 +110,14 @@ local void Main(void)
         {  1,               StaticStr("1023 ^ 1022") },
         {  10,              StaticStr("2 | 8") },
         {  13,              StaticStr("1 ^ 1 ^ 1 | 4 | 8") },
+        {  1,               StaticStr("12481248 && 23273") },
+        {  0,               StaticStr("0 && 23273") },
+        {  0,               StaticStr("123872 && 0") },
+        {  1,               StaticStr("248274 && 2487 || 0") },
+        {  1,               StaticStr("0 || 1238387 || 10") },
+        {  1,               StaticStr("23487 || 0 && 2387") },
+        {  0,               StaticStr("0 || 1 ^ 1") },
+        {  0,               StaticStr("1 ^ 1 || 0 && 0") },
     };
 
     usize TestsPassed = 0;
