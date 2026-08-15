@@ -18,6 +18,9 @@ typedef enum
     NodeKind_Greater,
     NodeKind_LessEqual,
     NodeKind_GreaterEqual,
+
+    NodeKind_ShiftLeft,
+    NodeKind_ShiftRight,
 } node_kind;
 
 typedef struct node node;
@@ -147,9 +150,36 @@ local node* ParseSum(token** ParseAt)
     return (Node);
 }
 
-local node* ParseComparison(token** ParseAt)
+local node* ParseShift(token** ParseAt)
 {
     node* Node = ParseSum(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_DoubleLess)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseSum(ParseAt));
+        }
+        else if (Token->Kind == TokenKind_DoubleGreater)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseSum(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseComparison(token** ParseAt)
+{
+    node* Node = ParseShift(ParseAt);
 
     for (;;)
     {
@@ -158,22 +188,22 @@ local node* ParseComparison(token** ParseAt)
         if (Token->Kind == '<')
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseShift(ParseAt));
         }
         else if (Token->Kind == '>')
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseShift(ParseAt));
         }
         else if (Token->Kind == TokenKind_LessEqual)
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseShift(ParseAt));
         }
         else if (Token->Kind == TokenKind_GreaterEqual)
         {
             *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseShift(ParseAt));
         }
         else
         {

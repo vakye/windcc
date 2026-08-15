@@ -11,12 +11,14 @@ enum
     // TokenKind_Identifier and TokenKind_Integer respectively, so they're
     // free for use.
 
-    TokenKind_Integer       = '0',
-    TokenKind_Identifier    = '1',
-    TokenKind_DoubleEqual   = '2', // NOTE(vak): "=="
-    TokenKind_BangEqual     = '3', // NOTE(vak): "!="
-    TokenKind_LessEqual     = '4', // NOTE(vak): "<="
-    TokenKind_GreaterEqual  = '5', // NOTE(vak): ">="
+    TokenKind_Integer           = '0',
+    TokenKind_Identifier        = '1',
+    TokenKind_DoubleEqual       = '2', // NOTE(vak): "=="
+    TokenKind_BangEqual         = '3', // NOTE(vak): "!="
+    TokenKind_LessEqual         = '4', // NOTE(vak): "<="
+    TokenKind_GreaterEqual      = '5', // NOTE(vak): ">="
+    TokenKind_DoubleLess        = '6', // NOTE(vak): "<<"
+    TokenKind_DoubleGreater     = '7', // NOTE(vak): ">>"
 };
 
 typedef struct token token;
@@ -96,6 +98,8 @@ local token* Tokenize(string Code)
 
         if (IsDigit(Code.Data[Index]))
         {
+            // NOTE(vak): Integer
+
             Last->Kind = TokenKind_Integer;
 
             Index++;
@@ -109,6 +113,8 @@ local token* Tokenize(string Code)
         }
         else if (IsIdentifierStart(Code.Data[Index]))
         {
+            // NOTE(vak): Identifier
+
             Last->Kind = TokenKind_Identifier;
 
             Index++;
@@ -122,9 +128,11 @@ local token* Tokenize(string Code)
         }
         else if (IsPrintable(Code.Data[Index]))
         {
+            // NOTE(vak): Punctuation
+
             char Character = Code.Data[Index++];
 
-            Last->Kind = (token_kind)Character; // NOTE(vak): Punctuation
+            Last->Kind = (token_kind)Character;
 
             if (Index < Code.Size)
             {
@@ -143,15 +151,20 @@ local token* Tokenize(string Code)
                     MatchCase('<', '=', TokenKind_LessEqual);
                     MatchCase('>', '=', TokenKind_GreaterEqual);
 
+                    MatchCase('<', '<', TokenKind_DoubleLess);
+                    MatchCase('>', '>', TokenKind_DoubleGreater);
+
                     #undef MatchCase
                 }
             }
         }
         else
         {
-            Print(Str("ERROR: Unknown character '"));
-            PrintCharacter(Code.Data[Index]);
-            Print(Str("'"));
+            u8 Character = (u8)Code.Data[Index];
+
+            Print(Str("ERROR: Unknown character \\"));
+            PrintUSize(Character);
+            Print(Str(" in input."));
             PrintNewLine();
             Exit(1);
         }

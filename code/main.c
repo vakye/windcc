@@ -82,6 +82,15 @@ local void Main(void)
         {  0,               StaticStr("2 != 2") },
         {  0,               StaticStr("2 == 8") },
         {  1,               StaticStr("2 != 8") },
+        {  1024,            StaticStr("1 << 10") },
+        {  512,             StaticStr("1 << 10 >> 1") },
+        {  1,               StaticStr("(1 << 10) / 1024") },
+        {  MB(20),          StaticStr("(10 + 10) << 20") },
+        { -156,             StaticStr("100 - (1 << 10 >> 2)") },
+        {  8192,            StaticStr("1 + 1 << 4 + 8") },
+        {  8192,            StaticStr("1 + (10 == 10) << (4 < 8)*4 + 8") },
+        {  2,               StaticStr("1 << 1") },
+        {  16,              StaticStr("64 >> 2") },
     };
 
     usize TestsPassed = 0;

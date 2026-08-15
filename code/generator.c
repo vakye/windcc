@@ -57,6 +57,8 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
         case NodeKind_Mul:
         case NodeKind_Div:
         case NodeKind_Mod:
+        case NodeKind_ShiftLeft:
+        case NodeKind_ShiftRight:
         {
             // NOTE(vak): C doesn't seem to enforce a specific order of evaluation
             // so we can evaluate in whichever order we want as long as the results
@@ -91,6 +93,14 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 // 48 f7 f9         idiv rcx
                 // 48 8b c2         mov rax, rdx
                 case NodeKind_Mod: Emit64(Gen, 0xc28b48f9f7489948); break;
+
+                // NOTE(vak):
+                // 48 d3 e0         sal rax, cl
+                case NodeKind_ShiftLeft: Emit24(Gen, 0xe0d348); break;
+
+                // NOTE(vak):
+                // 48 d3 f8         sar rax, cl
+                case NodeKind_ShiftRight: Emit24(Gen, 0xf8d348); break;
             }
         } break;
 
