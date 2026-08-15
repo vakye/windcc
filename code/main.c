@@ -56,7 +56,37 @@ local void Main(void)
         {  603,             StaticStr("120 / 2*10 + 10 % 7") },
         {  3,               StaticStr("120 / 2*(10 + 10) % 7") },
         { -60,              StaticStr("(120 / 2) * (5 - 10 + 4)") },
+        {  1,               StaticStr("120 / 2*(10 + 10) % 7 == 3") },
+        {  1,               StaticStr("3 == 120 / 2*(10 + 10) % 7") },
+        {  0,               StaticStr("3 != 120 / 2*(10 + 10) % 7") },
+        {  1,               StaticStr("120 / 2*(10 + 10) % 7 != 6") },
+        {  0,               StaticStr("12387 == 23781") },
+        {  1,               StaticStr("12387 != 23781") },
+        {  1,               StaticStr("1337 * 10 / 10 == 1337 + 10 - 10") },
+        {  1,               StaticStr("1337 * 10 / 10 != 1337 + 10 - 5") },
+        {  1,               StaticStr("10 + 1300 - 50 > 50 / 3") },
+        {  0,               StaticStr("120 / (10 + 1300 - 50) > 50 / 300") },
+        {  1,               StaticStr("120 / (10 + 1300 - 50) >= 50 / 300") },
+        {  1,               StaticStr("120 / (10 + 1300 - 50) <= 50 / 300") },
+        {  1,               StaticStr("120 / (10 + 1300 - 50) <= 50 / 3") },
+        {  1,               StaticStr("120 / (10 + 1300 - 50) < 50 / 3") },
+        {  1,               StaticStr("2 > 1") },
+        {  0,               StaticStr("1 > 2") },
+        {  1,               StaticStr("1 < 2") },
+        {  0,               StaticStr("1 > 2") },
+        {  0,               StaticStr("2 > 2") },
+        {  0,               StaticStr("2 < 2") },
+        {  1,               StaticStr("2 >= 2") },
+        {  1,               StaticStr("2 <= 2") },
+        {  1,               StaticStr("2 == 2") },
+        {  0,               StaticStr("2 != 2") },
+        {  0,               StaticStr("2 == 8") },
+        {  1,               StaticStr("2 != 8") },
     };
+
+    usize TestsPassed = 0;
+
+    PrintNewLine();
 
     for (usize TestIndex = 0; TestIndex < ArrayCount(TestCases); TestIndex++)
     {
@@ -68,6 +98,8 @@ local void Main(void)
 
         ssize RunResult = CompileAndRun(TestCase->Code);
         b32 Passed = (RunResult == TestCase->Expected);
+
+        TestsPassed += Passed;
 
         usize Padding = 16;
 
@@ -87,5 +119,14 @@ local void Main(void)
 
         PrintNewLine();
     }
+
+    PrintNewLine();
+    Print(Str("Tests passed: "));
+    PrintUSize(TestsPassed);
+    Print(Str("/"));
+    PrintUSize(ArrayCount(TestCases));
+    PrintNewLine();
+
+    PrintNewLine();
 }
 

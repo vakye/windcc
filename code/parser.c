@@ -11,6 +11,13 @@ typedef enum
     NodeKind_Mul,
     NodeKind_Div,
     NodeKind_Mod,
+
+    NodeKind_Equal,
+    NodeKind_NotEqual,
+    NodeKind_Less,
+    NodeKind_Greater,
+    NodeKind_LessEqual,
+    NodeKind_GreaterEqual,
 } node_kind;
 
 typedef struct node node;
@@ -140,9 +147,73 @@ local node* ParseSum(token** ParseAt)
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseComparison(token** ParseAt)
 {
     node* Node = ParseSum(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == '<')
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseSum(ParseAt));
+        }
+        else if (Token->Kind == '>')
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseSum(ParseAt));
+        }
+        else if (Token->Kind == TokenKind_LessEqual)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseSum(ParseAt));
+        }
+        else if (Token->Kind == TokenKind_GreaterEqual)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseSum(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseEquality(token** ParseAt)
+{
+    node* Node = ParseComparison(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_DoubleEqual)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_Equal, Token, Node, ParseComparison(ParseAt));
+        }
+        else if (Token->Kind == TokenKind_BangEqual)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateBinaryNode(NodeKind_NotEqual, Token, Node, ParseComparison(ParseAt));
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
+local node* ParseExpression(token** ParseAt)
+{
+    node* Node = ParseEquality(ParseAt);
     return (Node);
 }
 

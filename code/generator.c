@@ -93,6 +93,37 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 case NodeKind_Mod: Emit64(Gen, 0xc28b48f9f7489948); break;
             }
         } break;
+
+        case NodeKind_Equal:
+        case NodeKind_NotEqual:
+        case NodeKind_Less:
+        case NodeKind_Greater:
+        case NodeKind_LessEqual:
+        case NodeKind_GreaterEqual:
+        {
+            GenerateNode(Gen, Node->Right);
+            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
+            GenerateNode(Gen, Node->Left);
+            Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            // NOTE(vak):
+            // 48 3b c1     cmp rax, rcx
+            Emit24(Gen, 0xc13b48);
+
+            switch (Node->Kind)
+            {
+                case NodeKind_Equal:            Emit24(Gen, 0xc0940f); break; // NOTE(vak): 0f 94 c0 sete al
+                case NodeKind_NotEqual:         Emit24(Gen, 0xc0950f); break; // NOTE(vak): 0f 95 c0 setne al
+                case NodeKind_Less:             Emit24(Gen, 0xc09c0f); break; // NOTE(vak): 0f 9c c0 setl al
+                case NodeKind_Greater:          Emit24(Gen, 0xc09f0f); break; // NOTE(vak): 0f 9f c0 setg al
+                case NodeKind_LessEqual:        Emit24(Gen, 0xc09e0f); break; // NOTE(vak): 0f 9e c0 setle al
+                case NodeKind_GreaterEqual:     Emit24(Gen, 0xc09d0f); break; // NOTE(vak): 0f 9d c0 setge al
+            }
+
+            // NOTE(vak):
+            // 48 0f b6 c0  movzx rax, al
+            Emit32(Gen, 0xc0b60f48);
+        } break;
     }
 }
 

@@ -13,6 +13,10 @@ enum
 
     TokenKind_Integer       = '0',
     TokenKind_Identifier    = '1',
+    TokenKind_DoubleEqual   = '2', // NOTE(vak): "=="
+    TokenKind_BangEqual     = '3', // NOTE(vak): "!="
+    TokenKind_LessEqual     = '4', // NOTE(vak): "<="
+    TokenKind_GreaterEqual  = '5', // NOTE(vak): ">="
 };
 
 typedef struct token token;
@@ -118,8 +122,30 @@ local token* Tokenize(string Code)
         }
         else if (IsPrintable(Code.Data[Index]))
         {
-            Last->Kind = (token_kind)Code.Data[Index]; // NOTE(vak): Punctuation
-            Index++;
+            char Character = Code.Data[Index++];
+
+            Last->Kind = (token_kind)Character; // NOTE(vak): Punctuation
+
+            if (Index < Code.Size)
+            {
+                char C0 = Character;
+                char C1 = Code.Data[Index];
+
+                u16 Pair = (C0) | (C1 << 8);
+
+                switch (Pair)
+                {
+                    #define MatchCase(C0, C1, MatchToKind) \
+                        case (C0) | (C1 << 8): Last->Kind = MatchToKind; Index++; break
+
+                    MatchCase('=', '=', TokenKind_DoubleEqual);
+                    MatchCase('!', '=', TokenKind_BangEqual);
+                    MatchCase('<', '=', TokenKind_LessEqual);
+                    MatchCase('>', '=', TokenKind_GreaterEqual);
+
+                    #undef MatchCase
+                }
+            }
         }
         else
         {
