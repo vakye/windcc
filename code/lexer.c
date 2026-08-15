@@ -11,16 +11,27 @@ enum
     // TokenKind_Identifier and TokenKind_Integer respectively, so they're
     // free for use.
 
-    TokenKind_Integer           = '0',
-    TokenKind_Identifier        = '1',
-    TokenKind_DoubleEqual       = '2', // NOTE(vak): "=="
-    TokenKind_BangEqual         = '3', // NOTE(vak): "!="
-    TokenKind_LessEqual         = '4', // NOTE(vak): "<="
-    TokenKind_GreaterEqual      = '5', // NOTE(vak): ">="
-    TokenKind_DoubleLess        = '6', // NOTE(vak): "<<"
-    TokenKind_DoubleGreater     = '7', // NOTE(vak): ">>"
-    TokenKind_DoubleAmpersand   = '8', // NOTE(vak): "&&"
-    TokenKind_DoubleBar         = '9', // NOTE(vak): "||"
+    TokenKind_Integer               = '0',
+    TokenKind_Identifier            = '1',
+    TokenKind_DoubleEqual           = '2', // NOTE(vak): "=="
+    TokenKind_BangEqual             = '3', // NOTE(vak): "!="
+    TokenKind_LessEqual             = '4', // NOTE(vak): "<="
+    TokenKind_GreaterEqual          = '5', // NOTE(vak): ">="
+    TokenKind_DoubleLess            = '6', // NOTE(vak): "<<"
+    TokenKind_DoubleGreater         = '7', // NOTE(vak): ">>"
+    TokenKind_DoubleAmpersand       = '8', // NOTE(vak): "&&"
+    TokenKind_DoubleBar             = '9', // NOTE(vak): "||"
+
+    TokenKind_PlusEqual             = 'a', // NOTE(vak): "+="
+    TokenKind_MinusEqual            = 'b', // NOTE(vak): "-="
+    TokenKind_StarEqual             = 'c', // NOTE(vak): "*="
+    TokenKind_SlashEqual            = 'd', // NOTE(vak): "/="
+    TokenKind_PercentEqual          = 'e', // NOTE(vak): "%="
+    TokenKind_DoubleLessEqual       = 'f', // NOTE(vak): "<<="
+    TokenKind_DoubleGreaterEqual    = 'g', // NOTE(vak): ">>="
+    TokenKind_AmpersandEqual        = 'h', // NOTE(vak): "&="
+    TokenKind_HatEqual              = 'i', // NOTE(vak): "^="
+    TokenKind_BarEqual              = 'j', // NOTE(vak): "|="
 };
 
 typedef struct token token;
@@ -132,18 +143,43 @@ local token* Tokenize(string Code)
         {
             // NOTE(vak): Punctuation
 
-            char Character = Code.Data[Index++];
+            char Character = Code.Data[Index];
+            Index++;
 
             Last->Kind = (token_kind)Character;
 
-            if (Index < Code.Size)
+            u32 MatchValue = Character;
+
+            if (Index + 1 <= Code.Size)
             {
-                char C0 = Character;
-                char C1 = Code.Data[Index];
+                MatchValue |= (u32)Code.Data[Index] << 8;
 
-                u16 Pair = (C0) | (C1 << 8);
+                if (Index + 2 <= Code.Size)
+                    MatchValue |= (u32)Code.Data[Index + 1] << 16;
+            }
 
-                switch (Pair)
+            b32 AlreadyMatched = true;
+
+            // NOTE(vak): 3 character operators
+
+            switch (MatchValue)
+            {
+                default: AlreadyMatched = false; break;
+
+                #define MatchCase(C0, C1, C2, MatchToKind) \
+                    case (C0) | (C1 << 8) | (C2 << 16): Last->Kind = MatchToKind; Index += 2; break
+
+                MatchCase('<', '<', '=', TokenKind_DoubleLessEqual);
+                MatchCase('>', '>', '=', TokenKind_DoubleGreaterEqual);
+
+                #undef MatchCase
+            }
+
+            if (!AlreadyMatched)
+            {
+                // NOTE(vak): 2 character operators
+
+                switch (MatchValue & 0xFFFF)
                 {
                     #define MatchCase(C0, C1, MatchToKind) \
                         case (C0) | (C1 << 8): Last->Kind = MatchToKind; Index++; break
@@ -158,6 +194,15 @@ local token* Tokenize(string Code)
 
                     MatchCase('&', '&', TokenKind_DoubleAmpersand);
                     MatchCase('|', '|', TokenKind_DoubleBar);
+
+                    MatchCase('+', '=', TokenKind_PlusEqual);
+                    MatchCase('-', '=', TokenKind_MinusEqual);
+                    MatchCase('*', '=', TokenKind_StarEqual);
+                    MatchCase('/', '=', TokenKind_SlashEqual);
+                    MatchCase('%', '=', TokenKind_PercentEqual);
+                    MatchCase('&', '=', TokenKind_AmpersandEqual);
+                    MatchCase('^', '=', TokenKind_HatEqual);
+                    MatchCase('|', '=', TokenKind_BarEqual);
 
                     #undef MatchCase
                 }

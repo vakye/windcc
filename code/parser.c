@@ -468,6 +468,66 @@ local node* ParseAssignment(token** ParseAt)
         *ParseAt = Token->Next;
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, ParseAssignment(ParseAt));
     }
+    else if (Token->Kind == TokenKind_PlusEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_MinusEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_StarEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_SlashEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_Div, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_PercentEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_DoubleLessEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_DoubleGreaterEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_AmpersandEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_HatEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
+    else if (Token->Kind == TokenKind_BarEqual)
+    {
+        *ParseAt = Token->Next;
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
+    }
 
     return (Node);
 }

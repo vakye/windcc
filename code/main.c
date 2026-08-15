@@ -126,6 +126,10 @@ local void Main(void)
         {  100,             StaticStr("; 10; ; 20;;; 100; ;;") },
         {  100,             StaticStr("Hello = 50; World = 30; Hello + World*2 - 10;") },
         {  25,              StaticStr("A = B = C = D = E = 5; A = 1; B = 2; A*5 + B*B + 1 + C + D + E;") },
+        {  10,              StaticStr("A = B = 3; A += 4; A + B;") },
+        {  7,               StaticStr("A = B = 3; A += 4; B -= 3; A + B;") },
+        {  1,               StaticStr("A = B = 3; A += 4; B -= 3; A %= 6; A + B;") },
+        {  321,             StaticStr("A = 20; A <<= 10; A >>= 5; A *= 8; A += 10; A -= 5; A %= 273; A ^= 2481; A |= 1; A &= 341;") },
     };
 
     usize TestsPassed = 0;
