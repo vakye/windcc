@@ -421,6 +421,50 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 89 01     mov [rcx], rax
             Emit24(Gen, 0x018948);
         } break;
+
+        case NodeKind_PostIncrement:
+        {
+            GenerateAddress(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 8b 08     mov rcx, [rax]
+            // 48 ff 00     inc [rax]
+            // 48 8b c1     mov rax, rcx
+            Emit64(Gen, 0x8b4800ff48088b48);
+            Emit8(Gen, 0xc1);
+        } break;
+
+        case NodeKind_PostDecrement:
+        {
+            GenerateAddress(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 8b 08     mov rcx, [rax]
+            // 48 ff 08     dec [rax]
+            // 48 8b c1     mov rax, rcx
+            Emit64(Gen, 0x8b4808ff48088b48);
+            Emit8(Gen, 0xc1);
+        } break;
+
+        case NodeKind_PreIncrement:
+        {
+            GenerateAddress(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 ff 00     inc [rax]
+            // 48 8b 00     mov rax, [rax]
+            Emit48(Gen, 0x008b4800ff48);
+        } break;
+
+        case NodeKind_PreDecrement:
+        {
+            GenerateAddress(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 ff 08     dec [rax]
+            // 48 8b 00     mov rax, [rax]
+            Emit48(Gen, 0x008b4808ff48);
+        } break;
     }
 }
 

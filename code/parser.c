@@ -38,6 +38,11 @@ typedef enum
     NodeKind_Ternary,
 
     NodeKind_Assign,
+
+    NodeKind_PostIncrement,
+    NodeKind_PostDecrement,
+    NodeKind_PreIncrement,
+    NodeKind_PreDecrement,
 } node_kind;
 
 typedef struct node node;
@@ -134,6 +139,33 @@ local node* ParsePrimary(token** ParseAt)
     return (Node);
 }
 
+local node* ParsePostfix(token** ParseAt)
+{
+    node* Node = ParsePrimary(ParseAt);
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_DoublePlus)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateUnaryNode(NodeKind_PostIncrement, Token, Node);
+        }
+        else if (Token->Kind == TokenKind_DoubleMinus)
+        {
+            *ParseAt = Token->Next;
+            Node = AllocateUnaryNode(NodeKind_PostDecrement, Token, Node);
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (Node);
+}
+
 local node* ParsePrefix(token** ParseAt)
 {
     node* Node = 0;
@@ -159,9 +191,19 @@ local node* ParsePrefix(token** ParseAt)
         *ParseAt = Token->Next;
         Node = ParsePrefix(ParseAt);
     }
+    else if (Token->Kind == TokenKind_DoublePlus)
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_PreIncrement, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == TokenKind_DoubleMinus)
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_PreDecrement, Token, ParsePrefix(ParseAt));
+    }
     else
     {
-        Node = ParsePrimary(ParseAt);
+        Node = ParsePostfix(ParseAt);
     }
 
     return (Node);

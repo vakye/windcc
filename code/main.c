@@ -130,6 +130,11 @@ local void Main(void)
         {  7,               StaticStr("A = B = 3; A += 4; B -= 3; A + B;") },
         {  1,               StaticStr("A = B = 3; A += 4; B -= 3; A %= 6; A + B;") },
         {  321,             StaticStr("A = 20; A <<= 10; A >>= 5; A *= 8; A += 10; A -= 5; A %= 273; A ^= 2481; A |= 1; A &= 341;") },
+        {  10,              StaticStr("A = 0; A++; A++; A--; ++A; ++A; --A; A*5;") },
+        {  1,               StaticStr("A = 0; ++A;") },
+        {  10,              StaticStr("A = 10; A++;") },
+        {  9,               StaticStr("A = 10; --A;") },
+        {  50,              StaticStr("A = 50; A--;") },
     };
 
     usize TestsPassed = 0;

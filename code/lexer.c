@@ -32,6 +32,8 @@ enum
     TokenKind_AmpersandEqual        = 'h', // NOTE(vak): "&="
     TokenKind_HatEqual              = 'i', // NOTE(vak): "^="
     TokenKind_BarEqual              = 'j', // NOTE(vak): "|="
+    TokenKind_DoublePlus            = 'k', // NOTE(vak): "++"
+    TokenKind_DoubleMinus           = 'l', // NOTE(vak): "--"
 };
 
 typedef struct token token;
@@ -203,6 +205,9 @@ local token* Tokenize(string Code)
                     MatchCase('&', '=', TokenKind_AmpersandEqual);
                     MatchCase('^', '=', TokenKind_HatEqual);
                     MatchCase('|', '=', TokenKind_BarEqual);
+
+                    MatchCase('+', '+', TokenKind_DoublePlus);
+                    MatchCase('-', '-', TokenKind_DoubleMinus);
 
                     #undef MatchCase
                 }
