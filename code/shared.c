@@ -138,3 +138,22 @@ local string StringView(string String, usize From, usize Size)
     return (Result);
 }
 
+local b32 StringEqual(string A, string B)
+{
+    b32 Result = (A.Size == B.Size);
+
+    if (Result)
+    {
+        for (usize Index = 0; Index < A.Size; Index++)
+        {
+            if (A.Data[Index] != B.Data[Index])
+            {
+                Result = false;
+                break;
+            }
+        }
+    }
+
+    return (Result);
+}
+

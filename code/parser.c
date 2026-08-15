@@ -6,6 +6,7 @@ typedef enum
     NodeKind_Nil = 0,
 
     NodeKind_Integer,
+    NodeKind_Identifier,
 
     NodeKind_Negate,
     NodeKind_LogicalNot,
@@ -35,6 +36,8 @@ typedef enum
     NodeKind_LogicalOr,
 
     NodeKind_Ternary,
+
+    NodeKind_Assign,
 } node_kind;
 
 typedef struct node node;
@@ -45,6 +48,7 @@ struct node
     token* Token;
 
     usize Integer;
+    string Identifier;
 
     node* Left;
     node* Right;
@@ -94,6 +98,12 @@ local node* ParsePrimary(token** ParseAt)
     {
         Node = AllocateNode(NodeKind_Integer, Token);
         Node->Integer = TokenToInteger(Token);
+        *ParseAt = Token->Next;
+    }
+    else if (Token->Kind == TokenKind_Identifier)
+    {
+        Node = AllocateNode(NodeKind_Identifier, Token);
+        Node->Identifier = Token->String;
         *ParseAt = Token->Next;
     }
     else if (Token->Kind == '(')
@@ -448,9 +458,23 @@ local node* ParseTernary(token** ParseAt)
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseAssignment(token** ParseAt)
 {
     node* Node = ParseTernary(ParseAt);
+
+    token* Token = *ParseAt;
+    if (Token->Kind == '=')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, ParseAssignment(ParseAt));
+    }
+
+    return (Node);
+}
+
+local node* ParseExpression(token** ParseAt)
+{
+    node* Node = ParseAssignment(ParseAt);
     return (Node);
 }
 

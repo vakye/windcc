@@ -16,14 +16,26 @@ struct gen_rel32
     gen_rel32* Next;
 };
 
+typedef struct gen_symbol gen_symbol;
+struct gen_symbol
+{
+    string Name;
+    usize StackOffset;
+    gen_symbol* Next;
+};
+
 typedef struct
 {
     u8* Base;
     usize Size;
     usize Used;
+    usize StackSize;
 
     gen_rel32* FirstRel32;
     gen_rel32* LastRel32;
+
+    gen_symbol* FirstSymbol;
+    gen_symbol* LastSymbol;
 } gen_buffer;
 
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
@@ -83,6 +95,90 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
     }
 }
 
+local gen_symbol* AddSymbol(gen_buffer* Gen, string Name)
+{
+    gen_symbol* Symbol = Allocate(sizeof(gen_symbol));
+
+    Gen->StackSize += 8;
+
+    ZeroType(Symbol);
+    Symbol->Name = Name;
+    Symbol->StackOffset = Gen->StackSize;
+
+    if (!Gen->FirstSymbol)
+    {
+        Gen->FirstSymbol = Symbol;
+        Gen->LastSymbol = Symbol;
+    }
+    else
+    {
+        Gen->LastSymbol->Next = Symbol;
+        Gen->LastSymbol = Symbol;
+    }
+
+    return (Symbol);
+}
+
+local gen_symbol* LookupSymbol(gen_buffer* Gen, string Name)
+{
+    gen_symbol* Result = 0;
+
+    for (
+        gen_symbol* Symbol = Gen->FirstSymbol;
+        Symbol;
+        Symbol = Symbol->Next
+    )
+    {
+        if (StringEqual(Symbol->Name, Name))
+        {
+            Result = Symbol;
+            break;
+        }
+    }
+
+    return (Result);
+}
+
+local void GenerateAddress(gen_buffer* Gen, node* Node)
+{
+    if (!Node)
+    {
+        Println(Str("ERROR: not a value associated with a memory address"));
+        Exit(1);
+    }
+
+    switch (Node->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: not a value associated with a memory address"));
+            Exit(1);
+        } break;
+
+        case NodeKind_Identifier:
+        {
+            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            if (!Symbol)
+            {
+                Symbol = AddSymbol(Gen, Node->Identifier);
+            }
+
+            if (Symbol->StackOffset > S32Max)
+            {
+                Println(Str("ERROR: variable stack offset exceeds 32-bit signed integer max"));
+                Exit(1);
+            }
+
+            s32 Displacement = -(s32)Symbol->StackOffset;
+
+            // NOTE(vak):
+            // 48 8d 85 (Disp32) lea rax, [rbp - Symbol->StackOffset]
+            Emit24(Gen, 0x858d48);
+            Emit32(Gen, Displacement);
+        } break;
+    }
+}
+
 local void GenerateNode(gen_buffer* Gen, node* Node)
 {
     if (!Node)
@@ -102,6 +198,15 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 b8 (Imm64)    mov rax, Imm64
             Emit16(Gen, 0xb848);
             Emit64(Gen, Node->Integer);
+        } break;
+
+        case NodeKind_Identifier:
+        {
+            GenerateAddress(Gen, Node);
+
+            // NOTE(vak):
+            // 48 8b 00         mov rax, [rax]
+            Emit24(Gen, 0x008b48);
         } break;
 
         case NodeKind_Negate:
@@ -304,6 +409,18 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             GenerateNode(Gen, Node->IfElse);
             PlaceLabel(Gen, SkipElse);
         } break;
+
+        case NodeKind_Assign:
+        {
+            GenerateAddress(Gen, Node->Left);
+            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
+            GenerateNode(Gen, Node->Right);
+            Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            // NOTE(vak):
+            // 48 89 01     mov [rcx], rax
+            Emit24(Gen, 0x018948);
+        } break;
     }
 }
 
@@ -313,13 +430,16 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
     {
         .Base = Buffer,
         .Size = BufferSize,
-        .Used = 0,
     };
 
     // NOTE(vak):
-    // 55           push rbp
-    // 48 8b ec     mov rbp, rsp
-    Emit32(&Gen, 0xec8b4855);
+    // 55               push rbp
+    // 48 8b ec         mov rbp, rsp
+    // 48 81 ec Imm32   sub rsp, Gen.StackSize
+    Emit56(&Gen, 0xec8148ec8b4855);
+
+    s32* WriteStackSize = (s32*)(Gen.Base + Gen.Used);
+    Emit32(&Gen, 0x00000000);
 
     for (
         node* Statement = RootNode;
@@ -335,6 +455,19 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
     // 5d           pop rbp
     // c3           ret
     Emit40(&Gen, 0xc35de58b48);
+
+    // NOTE(vak): Write in stack size
+
+    if (Gen.Size)
+    {
+        if (Gen.StackSize > S32Max)
+        {
+            Println(Str("ERROR: stack size exceeds 32-bit signed integer max"));
+            Exit(1);
+        }
+
+        *WriteStackSize = Gen.StackSize;
+    }
 
     // NOTE(vak): Fill in all rel32 displacements
 

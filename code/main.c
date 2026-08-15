@@ -124,6 +124,8 @@ local void Main(void)
         {  40,              StaticStr("0 ? 10 ? 30 : 10 : 0 ? 30 : 40;") },
         {  1,               StaticStr("10 >= 10 ? 1000 - 999 : 20;") },
         {  100,             StaticStr("; 10; ; 20;;; 100; ;;") },
+        {  100,             StaticStr("Hello = 50; World = 30; Hello + World*2 - 10;") },
+        {  25,              StaticStr("A = B = C = D = E = 5; A = 1; B = 2; A*5 + B*B + 1 + C + D + E;") },
     };
 
     usize TestsPassed = 0;
