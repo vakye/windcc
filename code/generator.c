@@ -279,6 +279,31 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             Emit64(Gen, 0x0f48c0950fc08548);
             Emit16(Gen, 0xc0b6);
         } break;
+
+        case NodeKind_Ternary:
+        {
+            gen_label* SkipThen = AllocateLabel();
+            gen_label* SkipElse = AllocateLabel();
+
+            GenerateNode(Gen, Node->IfCond);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 84 Rel32  jz SkipThen
+            Emit40(Gen, 0x840fc08548);
+            EmitRel32(Gen, SkipThen);
+
+            GenerateNode(Gen, Node->IfThen);
+
+            // NOTE(vak):
+            // e9 Rel32     jmp SkipElse
+            Emit8(Gen, 0xe9);
+            EmitRel32(Gen, SkipElse);
+
+            PlaceLabel(Gen, SkipThen);
+            GenerateNode(Gen, Node->IfElse);
+            PlaceLabel(Gen, SkipElse);
+        } break;
     }
 }
 

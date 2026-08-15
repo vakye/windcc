@@ -118,6 +118,11 @@ local void Main(void)
         {  1,               StaticStr("23487 || 0 && 2387") },
         {  0,               StaticStr("0 || 1 ^ 1") },
         {  0,               StaticStr("1 ^ 1 || 0 && 0") },
+        {  10,              StaticStr("1 ? 10 : 20") },
+        {  20,              StaticStr("0 ? 10 : 20") },
+        {  30,              StaticStr("1 ? 10 ? 30 : 10 : 20") },
+        {  40,              StaticStr("0 ? 10 ? 30 : 10 : 0 ? 30 : 40") },
+        {  1,               StaticStr("10 >= 10 ? 1000 - 999 : 20") },
     };
 
     usize TestsPassed = 0;

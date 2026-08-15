@@ -33,6 +33,8 @@ typedef enum
 
     NodeKind_LogicalAnd,
     NodeKind_LogicalOr,
+
+    NodeKind_Ternary,
 } node_kind;
 
 typedef struct node node;
@@ -45,6 +47,10 @@ struct node
 
     node* Left;
     node* Right;
+
+    node* IfCond;
+    node* IfThen;
+    node* IfElse;
 };
 
 local node* AllocateNode(node_kind Kind, token* Token)
@@ -406,9 +412,40 @@ local node* ParseLogicalOr(token** ParseAt)
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseTernary(token** ParseAt)
 {
     node* Node = ParseLogicalOr(ParseAt);
+
+    token* Token = *ParseAt;
+    if (Token->Kind == '?')
+    {
+        node* TernaryNode = AllocateNode(NodeKind_Ternary, Token);
+
+        *ParseAt = Token->Next;
+
+        TernaryNode->IfCond = Node;
+        TernaryNode->IfThen = ParseTernary(ParseAt);
+
+        Token = *ParseAt;
+        if (Token->Kind != ':')
+        {
+            Println(Str("ERROR: missing ':' in ternary expression"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+
+        TernaryNode->IfElse = ParseTernary(ParseAt);
+
+        Node = TernaryNode;
+    }
+
+    return (Node);
+}
+
+local node* ParseExpression(token** ParseAt)
+{
+    node* Node = ParseTernary(ParseAt);
     return (Node);
 }
 
