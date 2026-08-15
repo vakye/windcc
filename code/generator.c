@@ -321,7 +321,14 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
     // 48 8b ec     mov rbp, rsp
     Emit32(&Gen, 0xec8b4855);
 
-    GenerateNode(&Gen, RootNode);
+    for (
+        node* Statement = RootNode;
+        Statement;
+        Statement = Statement->Next
+    )
+    {
+        GenerateNode(&Gen, Statement);
+    }
 
     // NOTE(vak):
     // 48 8b e5     mov rsp, rbp

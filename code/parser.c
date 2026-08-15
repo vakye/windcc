@@ -41,6 +41,7 @@ typedef struct node node;
 struct node
 {
     node_kind Kind;
+    node* Next;
     token* Token;
 
     usize Integer;
@@ -109,6 +110,10 @@ local node* ParsePrimary(token** ParseAt)
         }
 
         *ParseAt = Token->Next;
+    }
+    else if (Token->Kind == ';')
+    {
+        // NOTE(vak): Ignore
     }
     else
     {
@@ -449,10 +454,47 @@ local node* ParseExpression(token** ParseAt)
     return (Node);
 }
 
+local node* ParseStatement(token** ParseAt)
+{
+    node* Node = ParseExpression(ParseAt);
+
+    token* Token = *ParseAt;
+    if (Token->Kind != ';')
+    {
+        Println(Str("ERROR: expected ';' at end of statement"));
+        Exit(1);
+    }
+
+    *ParseAt = Token->Next;
+
+    return (Node);
+}
+
 local node* Parse(token* FirstToken)
 {
     token* ParseAt = FirstToken;
-    node* Node = ParseExpression(&ParseAt);
-    return (Node);
+
+    node* First = 0;
+    node* Last = 0;
+
+    while (ParseAt->Kind != TokenKind_EOF)
+    {
+        node* Statement = ParseStatement(&ParseAt);
+        if (!Statement)
+            continue;
+
+        if (!First)
+        {
+            First = Statement;
+            Last = Statement;
+        }
+        else
+        {
+            Last->Next = Statement;
+            Last = Statement;
+        }
+    }
+
+    return (First);
 }
 
