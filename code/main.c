@@ -153,6 +153,8 @@ local void Main(void)
         { 7,                        StaticStr("int A = 4; if (A == 5) { 10; } else if (A == 4) { 7; } else 2;") },
         { 2,                        StaticStr("int A = 3; if (A == 5) { 10; } else if (A == 4) { 7; } else 2;") },
         { 10,                       StaticStr("int A = 3; { int B = 5; } int B = 7; A + B;") },
+        { 10,                       StaticStr("int A = 0; for (int I = 0; I < 10; I++) { A++; } A;") },
+        { 6765,                     StaticStr("int A = 0; int B = 1; for (int I = 0; I < 10; I++) { int C = A + B; B = A; A = C; } for (int I = 0; I < 10; I++) { int C = A + B; B = A; A = C; } A;") },
     };
 
     usize TestsPassed = 0;

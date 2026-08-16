@@ -699,6 +699,41 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 PlaceLabel(Gen, SkipThen);
             }
         } break;
+
+        case NodeKind_For:
+        {
+            gen_label* StartOfLoop = AllocateLabel();
+            gen_label* EndOfLoop = AllocateLabel();
+
+            gen_scope Scope = BeginScope(Gen);
+
+            GenerateNode(Gen, Node->ForInit);
+
+            PlaceLabel(Gen, StartOfLoop);
+
+            if (Node->ForCond)
+            {
+                GenerateNode(Gen, Node->ForCond);
+
+                // NOTE(vak):
+                // 48 85 c0     test rax, rax
+                // 0f 84 Rel32  jz EndOfLoop
+                Emit40(Gen, 0x840fc08548);
+                EmitRel32(Gen, EndOfLoop);
+            }
+
+            GenerateNode(Gen, Node->ForBody);
+            GenerateNode(Gen, Node->ForIter);
+
+            // NOTE(vak):
+            // e9 Rel32     jmp StartOfLoop
+            Emit8(Gen, 0xe9);
+            EmitRel32(Gen, StartOfLoop);
+
+            PlaceLabel(Gen, EndOfLoop);
+
+            EndScope(Gen, Scope);
+        } break;
     }
 }
 

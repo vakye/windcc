@@ -47,6 +47,7 @@ typedef enum
     NodeKind_Assign,
     NodeKind_Declare,
     NodeKind_If,
+    NodeKind_For,
 } node_kind;
 
 typedef struct
@@ -76,6 +77,11 @@ struct node
     node* IfElse;
 
     node* FirstStatement;
+
+    node* ForInit;
+    node* ForCond;
+    node* ForIter;
+    node* ForBody;
 };
 
 local node* AllocateNode(node_kind Kind, token* Token)
@@ -863,6 +869,72 @@ local node* ParseStatement(token** ParseAt)
             *ParseAt = Token->Next;
             Node->IfElse = ParseStatement(ParseAt);
         }
+    }
+    else if (Token->Kind == TokenKind_For)
+    {
+        Node = AllocateNode(NodeKind_For, Token);
+
+        *ParseAt = Token->Next;
+        Token = *ParseAt;
+
+        if (Token->Kind != '(')
+        {
+            Println(Str("ERROR: expected '(' after for"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+
+        // NOTE(vak): For loop init clause can either be a declaration or
+        // an expression
+
+        type_spec TypeSpec = ParseDeclarationSpecifiers(ParseAt);
+        if (TypeSpec.Bytes)
+        {
+            Node->ForInit = ParseDeclaration(ParseAt, TypeSpec);
+
+        }
+        else
+        {
+            Node->ForInit = ParseExpression(ParseAt);
+        }
+
+        Token = *ParseAt;
+        if (Token->Kind != ';')
+        {
+            Println(Str("ERROR: expected ';' at end of statement"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+
+        // NOTE(vak): For loop condition
+
+        Node->ForCond = ParseExpression(ParseAt);
+
+        Token = *ParseAt;
+        if (Token->Kind != ';')
+        {
+            Println(Str("ERROR: expected ';' at end of statement"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+
+        // NOTE(vak): For loop iteration update
+
+        Node->ForIter = ParseExpression(ParseAt);
+
+        Token = *ParseAt;
+        if (Token->Kind != ')')
+        {
+            Println(Str("ERROR: missing ')' in for loop"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+
+        Node->ForBody = ParseStatement(ParseAt);
     }
     else if (Token->Kind == '{')
     {
