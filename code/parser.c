@@ -626,6 +626,8 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
     b32 DetectedInt = false;
     b32 DetectedShort = false;
     b32 DetectedChar = false;
+    b32 DetectedLong = false;
+    b32 DetectedLongLong = false;
 
     for (;;)
     {
@@ -669,6 +671,33 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
 
             *ParseAt = Token->Next;
         }
+        else if (Token->Kind == TokenKind_Long)
+        {
+            if (DetectedShort || DetectedChar)
+            {
+                Println(Str("ERROR: multiple types specified in declaration"));
+                Exit(1);
+            }
+
+            if (DetectedLongLong)
+            {
+                Println(Str("ERROR: too many 'long' in declaration"));
+                Exit(1);
+            }
+
+            if (DetectedLong)
+            {
+                DetectedLongLong = true;
+                TypeSpec.Bytes = 8;
+            }
+            else
+            {
+                DetectedLong = true;
+                TypeSpec.Bytes = 4;
+            }
+
+            *ParseAt = Token->Next;
+        }
         else if (Token->Kind == TokenKind_Int)
         {
             if (DetectedInt)
@@ -677,15 +706,12 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
                 Exit(1);
             }
 
-            if (DetectedShort || DetectedChar)
+            if (!DetectedChar && !DetectedShort && !DetectedLong)
             {
-                Println(Str("ERROR: multiple types specified in declaration"));
-                Exit(1);
+                TypeSpec.Bytes = 4;
             }
 
-            TypeSpec.Bytes = 4;
             DetectedInt = true;
-
             *ParseAt = Token->Next;
         }
         else if (Token->Kind == TokenKind_Short)
@@ -696,7 +722,7 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
                 Exit(1);
             }
 
-            if (DetectedInt || DetectedChar)
+            if (DetectedChar || DetectedLong)
             {
                 Println(Str("ERROR: multiple types specified in declaration"));
                 Exit(1);
@@ -715,7 +741,7 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
                 Exit(1);
             }
 
-            if (DetectedInt || DetectedShort)
+            if (DetectedShort || DetectedLong)
             {
                 Println(Str("ERROR: multiple types specified in declaration"));
                 Exit(1);
