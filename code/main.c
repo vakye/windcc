@@ -161,6 +161,8 @@ local void Main(void)
         { 1,                        StaticStr("int A = 0; int B = 0; do { A /= 10; B++; } while (A); B;") },
         { 2,                        StaticStr("int A = 10; int B = 0; while(A) { A /= 10; B++; } B;") },
         { 0,                        StaticStr("int A = 0; int B = 0; while(A) { A /= 10; B++; } B;") },
+        { 10,                       StaticStr("int A = 0; while(A < 100) { if (A < 10) A++; else break; } A;") },
+        { 30,                       StaticStr("int A = 0; for (int I = 0; I < 100; I++) { if (I < 20) { continue; } else if (I < 50) { A++; continue; } else break; A += 10; } A;") },
     };
 
     usize TestsPassed = 0;

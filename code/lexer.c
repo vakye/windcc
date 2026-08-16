@@ -46,6 +46,8 @@ enum
     TokenKind_For                   = 'I', // NOTE(vak): "for"
     TokenKind_While                 = 'J', // NOTE(vak): "while"
     TokenKind_Do                    = 'K', // NOTE(vak): "do"
+    TokenKind_Break                 = 'L', // NOTE(vak): "break"
+    TokenKind_Continue              = 'M', // NOTE(vak): "continue"
 };
 
 typedef struct token token;
@@ -178,6 +180,10 @@ local token* Tokenize(string Code)
                 Last->Kind = TokenKind_While;
             else if (StringEqual(Slice, Str("do")))
                 Last->Kind = TokenKind_Do;
+            else if (StringEqual(Slice, Str("break")))
+                Last->Kind = TokenKind_Break;
+            else if (StringEqual(Slice, Str("continue")))
+                Last->Kind = TokenKind_Continue;
         }
         else if (IsPrintable(Code.Data[Index]))
         {

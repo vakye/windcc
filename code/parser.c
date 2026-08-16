@@ -48,6 +48,8 @@ typedef enum
     NodeKind_Declare,
     NodeKind_If,
     NodeKind_For,
+    NodeKind_Break,
+    NodeKind_Continue,
 } node_kind;
 
 typedef struct
@@ -999,6 +1001,16 @@ local node* ParseStatement(token** ParseAt)
             Println(Str("ERROR: expected ';' at end of do-while loop"));
             Exit(1);
         }
+    }
+    else if (Token->Kind == TokenKind_Break)
+    {
+        Node = AllocateNode(NodeKind_Break, Token);
+        *ParseAt = Token->Next;
+    }
+    else if (Token->Kind == TokenKind_Continue)
+    {
+        Node = AllocateNode(NodeKind_Continue, Token);
+        *ParseAt = Token->Next;
     }
     else if (Token->Kind == '{')
     {

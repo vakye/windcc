@@ -43,6 +43,9 @@ typedef struct
     gen_symbol* FirstSymbol;
     gen_symbol* LastSymbol;
     gen_symbol* FirstFreeSymbol;
+
+    gen_label* BreakLabel;
+    gen_label* ContinueLabel;
 } gen_buffer;
 
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
@@ -705,6 +708,14 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             gen_label* StartOfLoop = AllocateLabel();
             gen_label* EndOfLoop = AllocateLabel();
 
+            gen_label* OldBreakLabel = Gen->BreakLabel;
+            gen_label* OldContinueLabel = Gen->ContinueLabel;
+
+            gen_label* ContinueLabel = AllocateLabel();
+
+            Gen->BreakLabel = EndOfLoop;
+            Gen->ContinueLabel = ContinueLabel;
+
             gen_scope Scope = BeginScope(Gen);
 
             GenerateNode(Gen, Node->ForInit);
@@ -723,6 +734,7 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             }
 
             GenerateNode(Gen, Node->ForBody);
+            PlaceLabel(Gen, ContinueLabel);
             GenerateNode(Gen, Node->ForIter);
 
             // NOTE(vak):
@@ -733,6 +745,37 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             PlaceLabel(Gen, EndOfLoop);
 
             EndScope(Gen, Scope);
+
+            Gen->BreakLabel = OldBreakLabel;
+            Gen->ContinueLabel = OldContinueLabel;
+        } break;
+
+        case NodeKind_Break:
+        {
+            if (!Gen->BreakLabel)
+            {
+                Println(Str("ERROR: invalid break statement"));
+                Exit(1);
+            }
+
+            // NOTE(vak):
+            // e9 Rel32     jmp BreakLabel
+            Emit8(Gen, 0xe9);
+            EmitRel32(Gen, Gen->BreakLabel);
+        } break;
+
+        case NodeKind_Continue:
+        {
+            if (!Gen->ContinueLabel)
+            {
+                Println(Str("ERROR: invalid continue statement"));
+                Exit(1);
+            }
+
+            // NOTE(vak):
+            // e9 Rel32     jmp ContinueLabel
+            Emit8(Gen, 0xe9);
+            EmitRel32(Gen, Gen->ContinueLabel);
         } break;
     }
 }
