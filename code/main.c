@@ -139,6 +139,12 @@ local void Main(void)
         {  0,               StaticStr("char A = 256; A;") },
         {  117,             StaticStr("char A = -128; A -= 11; A;") },
         {  -32768,          StaticStr("short A = 32767; A += 1; A;") },
+        { -1,               StaticStr("char A = 255; A;") },
+        { -1,               StaticStr("signed char A = 255; A;") },
+        {  255,             StaticStr("unsigned char A = 255; A;") },
+        {  65535,           StaticStr("unsigned short A = 65535; A;") },
+        { -1,               StaticStr("signed short A = 65535; A;") },
+        { -1,               StaticStr("short A = 65535; A;") },
     };
 
     usize TestsPassed = 0;
@@ -150,7 +156,7 @@ local void Main(void)
         test_case* TestCase = TestCases + TestIndex;
 
         Print(Str("TestCases["));
-        RightPadOutput(PrintUSize(TestIndex), 2);
+        RightPadOutput(PrintUSize(TestIndex), 3);
         Print(Str("]: "));
 
         ssize RunResult = CompileAndRun(TestCase->Code);

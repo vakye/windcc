@@ -616,28 +616,134 @@ local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
     return (Node);
 }
 
+local type_spec ParseDeclarationSpecifiers(token** ParseAt)
+{
+    type_spec TypeSpec = {0};
+    TypeSpec.Signed = true;
+
+    b32 DetectedUnsigned = false;
+    b32 DetectedSigned = false;
+    b32 DetectedInt = false;
+    b32 DetectedShort = false;
+    b32 DetectedChar = false;
+
+    for (;;)
+    {
+        token* Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_Unsigned)
+        {
+            if (DetectedUnsigned)
+            {
+                Println(Str("ERROR: multiple 'unsigned' specifiers"));
+                Exit(1);
+            }
+
+            if (DetectedSigned)
+            {
+                Println(Str("ERROR: 'signed' and 'unsigned' specifiers used together"));
+                Exit(1);
+            }
+
+            TypeSpec.Signed = false;
+            DetectedUnsigned = true;
+
+            *ParseAt = Token->Next;
+        }
+        else if (Token->Kind == TokenKind_Signed)
+        {
+            if (DetectedSigned)
+            {
+                Println(Str("ERROR: multiple 'signed' specifiers"));
+                Exit(1);
+            }
+
+            if (DetectedUnsigned)
+            {
+                Println(Str("ERROR: 'signed' and 'unsigned' specifiers used together"));
+                Exit(1);
+            }
+
+            TypeSpec.Signed = true;
+            DetectedUnsigned = true;
+
+            *ParseAt = Token->Next;
+        }
+        else if (Token->Kind == TokenKind_Int)
+        {
+            if (DetectedInt)
+            {
+                Println(Str("ERROR: multiple 'int' in declaration"));
+                Exit(1);
+            }
+
+            if (DetectedShort || DetectedChar)
+            {
+                Println(Str("ERROR: multiple types specified in declaration"));
+                Exit(1);
+            }
+
+            TypeSpec.Bytes = 4;
+            DetectedInt = true;
+
+            *ParseAt = Token->Next;
+        }
+        else if (Token->Kind == TokenKind_Short)
+        {
+            if (DetectedShort)
+            {
+                Println(Str("ERROR: multiple 'short' in declaration"));
+                Exit(1);
+            }
+
+            if (DetectedInt || DetectedChar)
+            {
+                Println(Str("ERROR: multiple types specified in declaration"));
+                Exit(1);
+            }
+
+            TypeSpec.Bytes = 2;
+            DetectedShort = true;
+
+            *ParseAt = Token->Next;
+        }
+        else if (Token->Kind == TokenKind_Char)
+        {
+            if (DetectedChar)
+            {
+                Println(Str("ERROR: multiple 'char' in declaration"));
+                Exit(1);
+            }
+
+            if (DetectedInt || DetectedShort)
+            {
+                Println(Str("ERROR: multiple types specified in declaration"));
+                Exit(1);
+            }
+
+            TypeSpec.Bytes = 1;
+            DetectedChar = true;
+
+            *ParseAt = Token->Next;
+        }
+        else
+        {
+            break;
+        }
+    }
+
+    return (TypeSpec);
+}
+
 local node* ParseStatement(token** ParseAt)
 {
     token* Token = *ParseAt;
 
     node* Node = 0;
 
-    if (Token->Kind == TokenKind_Int)
+    type_spec TypeSpec = ParseDeclarationSpecifiers(ParseAt);
+    if (TypeSpec.Bytes)
     {
-        *ParseAt = Token->Next;
-        type_spec TypeSpec = {.Signed = true, .Bytes = 4};
-        Node = ParseDeclaration(ParseAt, TypeSpec);
-    }
-    else if (Token->Kind == TokenKind_Char)
-    {
-        *ParseAt = Token->Next;
-        type_spec TypeSpec = {.Signed = true, .Bytes = 1};
-        Node = ParseDeclaration(ParseAt, TypeSpec);
-    }
-    else if (Token->Kind == TokenKind_Short)
-    {
-        *ParseAt = Token->Next;
-        type_spec TypeSpec = {.Signed = true, .Bytes = 2};
         Node = ParseDeclaration(ParseAt, TypeSpec);
     }
     else

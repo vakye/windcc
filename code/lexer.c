@@ -38,6 +38,8 @@ enum
     TokenKind_Int                   = 'A', // NOTE(vak): "int"
     TokenKind_Char                  = 'B', // NOTE(vak): "char"
     TokenKind_Short                 = 'C', // NOTE(vak): "short"
+    TokenKind_Signed                = 'D', // NOTE(vak): "signed"
+    TokenKind_Unsigned              = 'E', // NOTE(vak): "unsigned"
 };
 
 typedef struct token token;
@@ -154,6 +156,10 @@ local token* Tokenize(string Code)
                 Last->Kind = TokenKind_Char;
             else if (StringEqual(Slice, Str("short")))
                 Last->Kind = TokenKind_Short;
+            else if (StringEqual(Slice, Str("unsigned")))
+                Last->Kind = TokenKind_Unsigned;
+            else if (StringEqual(Slice, Str("signed")))
+                Last->Kind = TokenKind_Signed;
         }
         else if (IsPrintable(Code.Data[Index]))
         {
