@@ -136,6 +136,9 @@ local void Main(void)
         {  9,               StaticStr("int A = 10; --A;") },
         {  50,              StaticStr("int A = 50; A--;") },
         {  0,               StaticStr("int A = 4294967296; A;") },
+        {  0,               StaticStr("char A = 256; A;") },
+        {  117,             StaticStr("char A = -128; A -= 11; A;") },
+        {  -32768,          StaticStr("short A = 32767; A += 1; A;") },
     };
 
     usize TestsPassed = 0;

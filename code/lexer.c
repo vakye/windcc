@@ -36,6 +36,8 @@ enum
     TokenKind_DoubleMinus           = 'l', // NOTE(vak): "--"
 
     TokenKind_Int                   = 'A', // NOTE(vak): "int"
+    TokenKind_Char                  = 'B', // NOTE(vak): "char"
+    TokenKind_Short                 = 'C', // NOTE(vak): "short"
 };
 
 typedef struct token token;
@@ -148,6 +150,10 @@ local token* Tokenize(string Code)
 
             if (StringEqual(Slice, Str("int")))
                 Last->Kind = TokenKind_Int;
+            else if (StringEqual(Slice, Str("char")))
+                Last->Kind = TokenKind_Char;
+            else if (StringEqual(Slice, Str("short")))
+                Last->Kind = TokenKind_Short;
         }
         else if (IsPrintable(Code.Data[Index]))
         {

@@ -590,6 +590,32 @@ local node* ParseExpression(token** ParseAt)
     return (Node);
 }
 
+local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
+{
+    token* Token = *ParseAt;
+
+    node* Node = AllocateNode(NodeKind_Declare, Token);
+
+    if (Token->Kind != TokenKind_Identifier)
+    {
+        Print(Str("ERROR: '"));
+        Print(Token->String);
+        Print(Str("' is not a valid variable name"));
+        PrintNewLine();
+        Exit(1);
+    }
+
+    Node->TypeSpec = TypeSpec;
+    Node->Identifier = Token->String;
+
+    // NOTE(vak): No need to advance past identifier since ParseExpression
+    // can use it to generate an assignment node.
+
+    Node->Initializer = ParseExpression(ParseAt);
+
+    return (Node);
+}
+
 local node* ParseStatement(token** ParseAt)
 {
     token* Token = *ParseAt;
@@ -598,28 +624,21 @@ local node* ParseStatement(token** ParseAt)
 
     if (Token->Kind == TokenKind_Int)
     {
-        Node = AllocateNode(NodeKind_Declare, Token);
-
         *ParseAt = Token->Next;
-        Token = *ParseAt;
-
-        if (Token->Kind != TokenKind_Identifier)
-        {
-            Print(Str("ERROR: '"));
-            Print(Token->String);
-            Print(Str("' is not a valid variable name"));
-            PrintNewLine();
-            Exit(1);
-        }
-
-        Node->TypeSpec.Signed = true;
-        Node->TypeSpec.Bytes = 4;
-        Node->Identifier = Token->String;
-
-        // NOTE(vak): No need to advance past identifier since ParseExpression
-        // can use it to generate an assignment node.
-
-        Node->Initializer = ParseExpression(ParseAt);
+        type_spec TypeSpec = {.Signed = true, .Bytes = 4};
+        Node = ParseDeclaration(ParseAt, TypeSpec);
+    }
+    else if (Token->Kind == TokenKind_Char)
+    {
+        *ParseAt = Token->Next;
+        type_spec TypeSpec = {.Signed = true, .Bytes = 1};
+        Node = ParseDeclaration(ParseAt, TypeSpec);
+    }
+    else if (Token->Kind == TokenKind_Short)
+    {
+        *ParseAt = Token->Next;
+        type_spec TypeSpec = {.Signed = true, .Bytes = 2};
+        Node = ParseDeclaration(ParseAt, TypeSpec);
     }
     else
     {
