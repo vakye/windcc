@@ -965,6 +965,41 @@ local node* ParseStatement(token** ParseAt)
 
         Node->ForBody = ParseStatement(ParseAt);
     }
+    else if (Token->Kind == TokenKind_Do)
+    {
+        Node = AllocateNode(NodeKind_For, Token);
+
+        *ParseAt = Token->Next;
+
+        Node->ForBody = ParseStatement(ParseAt);
+        Node->ForInit = Node->ForBody;
+
+        Token = *ParseAt;
+
+        if (Token->Kind != TokenKind_While)
+        {
+            Println(Str("ERROR: missing 'while' in do-while loop"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+        Token = *ParseAt;
+
+        if (Token->Kind != '(')
+        {
+            Println(Str("ERROR: expected '(' after while"));
+            Exit(1);
+        }
+
+        Node->ForCond = ParseExpression(ParseAt);
+
+        Token = *ParseAt;
+        if (Token->Kind != ';')
+        {
+            Println(Str("ERROR: expected ';' at end of do-while loop"));
+            Exit(1);
+        }
+    }
     else if (Token->Kind == '{')
     {
         Node = ParseBlock(ParseAt);

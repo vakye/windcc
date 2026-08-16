@@ -157,6 +157,10 @@ local void Main(void)
         { 6765,                     StaticStr("int A = 0; int B = 1; for (int I = 0; I < 10; I++) { int C = A + B; B = A; A = C; } for (int I = 0; I < 10; I++) { int C = A + B; B = A; A = C; } A;") },
         { 10,                       StaticStr("int A = 0; while (A < 10) { A++; } A;") },
         { 30,                       StaticStr("int A = 0; int B = 0; while (B < 10) { A += 2; ++B; } A + B;") },
+        { 2,                        StaticStr("int A = 10; int B = 0; do { A /= 10; B++; } while (A); B;") },
+        { 1,                        StaticStr("int A = 0; int B = 0; do { A /= 10; B++; } while (A); B;") },
+        { 2,                        StaticStr("int A = 10; int B = 0; while(A) { A /= 10; B++; } B;") },
+        { 0,                        StaticStr("int A = 0; int B = 0; while(A) { A /= 10; B++; } B;") },
     };
 
     usize TestsPassed = 0;
