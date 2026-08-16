@@ -38,12 +38,19 @@ typedef enum
     NodeKind_Ternary,
 
     NodeKind_Assign,
+    NodeKind_Declare,
 
     NodeKind_PostIncrement,
     NodeKind_PostDecrement,
     NodeKind_PreIncrement,
     NodeKind_PreDecrement,
 } node_kind;
+
+typedef struct
+{
+    b32 Signed;
+    usize Bytes;
+} type_spec;
 
 typedef struct node node;
 struct node
@@ -53,7 +60,10 @@ struct node
     token* Token;
 
     usize Integer;
+
+    type_spec TypeSpec;
     string Identifier;
+    node* Initializer;
 
     node* Left;
     node* Right;
@@ -582,9 +592,41 @@ local node* ParseExpression(token** ParseAt)
 
 local node* ParseStatement(token** ParseAt)
 {
-    node* Node = ParseExpression(ParseAt);
-
     token* Token = *ParseAt;
+
+    node* Node = 0;
+
+    if (Token->Kind == TokenKind_Int)
+    {
+        Node = AllocateNode(NodeKind_Declare, Token);
+
+        *ParseAt = Token->Next;
+        Token = *ParseAt;
+
+        if (Token->Kind != TokenKind_Identifier)
+        {
+            Print(Str("ERROR: '"));
+            Print(Token->String);
+            Print(Str("' is not a valid variable name"));
+            PrintNewLine();
+            Exit(1);
+        }
+
+        Node->TypeSpec.Signed = true;
+        Node->TypeSpec.Bytes = 4;
+        Node->Identifier = Token->String;
+
+        // NOTE(vak): No need to advance past identifier since ParseExpression
+        // can use it to generate an assignment node.
+
+        Node->Initializer = ParseExpression(ParseAt);
+    }
+    else
+    {
+        Node = ParseExpression(ParseAt);
+    }
+
+    Token = *ParseAt;
     if (Token->Kind != ';')
     {
         Println(Str("ERROR: expected ';' at end of statement"));

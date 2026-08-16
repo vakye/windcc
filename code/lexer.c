@@ -34,6 +34,8 @@ enum
     TokenKind_BarEqual              = 'j', // NOTE(vak): "|="
     TokenKind_DoublePlus            = 'k', // NOTE(vak): "++"
     TokenKind_DoubleMinus           = 'l', // NOTE(vak): "--"
+
+    TokenKind_Int                   = 'A', // NOTE(vak): "int"
 };
 
 typedef struct token token;
@@ -140,6 +142,12 @@ local token* Tokenize(string Code)
 
                 Index++;
             }
+
+            usize Size = Index - From;
+            string Slice = StringView(Code, From, Size);
+
+            if (StringEqual(Slice, Str("int")))
+                Last->Kind = TokenKind_Int;
         }
         else if (IsPrintable(Code.Data[Index]))
         {

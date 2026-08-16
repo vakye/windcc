@@ -21,6 +21,7 @@ struct gen_symbol
 {
     string Name;
     usize StackOffset;
+    type_spec TypeSpec;
     gen_symbol* Next;
 };
 
@@ -95,15 +96,16 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
     }
 }
 
-local gen_symbol* AddSymbol(gen_buffer* Gen, string Name)
+local gen_symbol* AddSymbol(gen_buffer* Gen, string Name, type_spec TypeSpec)
 {
     gen_symbol* Symbol = Allocate(sizeof(gen_symbol));
 
-    Gen->StackSize += 8;
+    Gen->StackSize += TypeSpec.Bytes;
 
     ZeroType(Symbol);
     Symbol->Name = Name;
     Symbol->StackOffset = Gen->StackSize;
+    Symbol->TypeSpec = TypeSpec;
 
     if (!Gen->FirstSymbol)
     {
@@ -143,7 +145,7 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
 {
     if (!Node)
     {
-        Println(Str("ERROR: not a value associated with a memory address"));
+        Println(Str("ERROR: no node passed into GenerateAddress"));
         Exit(1);
     }
 
@@ -160,7 +162,11 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
             gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
             if (!Symbol)
             {
-                Symbol = AddSymbol(Gen, Node->Identifier);
+                Print(Str("ERROR: undeclared identifier '"));
+                Print(Node->Identifier);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
             }
 
             if (Symbol->StackOffset > S32Max)
@@ -175,6 +181,100 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
             // 48 8d 85 (Disp32) lea rax, [rbp - Symbol->StackOffset]
             Emit24(Gen, 0x858d48);
             Emit32(Gen, Displacement);
+        } break;
+    }
+}
+
+// NOTE(vak): Load value of node: RAX=MemoryAddress, RCX=LoadedValue
+local void GenerateLoad(gen_buffer* Gen, node* Node)
+{
+    switch (Node->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: unimplemented node kind in GenerateLoad"));
+            Exit(1);
+        } break;
+
+        case NodeKind_Identifier:
+        {
+            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            if (!Symbol)
+            {
+                Print(Str("ERROR: undeclared identifier '"));
+                Print(Node->Identifier);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            type_spec TypeSpec = Symbol->TypeSpec;
+
+            if (TypeSpec.Signed)
+            {
+                switch (TypeSpec.Bytes)
+                {
+                    default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+                    case 1: Emit32(Gen, 0x08be0f48);    break; // NOTE(vak): 48 0f be 08   movsx rcx, byte [rax]
+                    case 2: Emit32(Gen, 0x08bf0f48);    break; // NOTE(vak): 48 0f bf 08   movsx rcx, word [rax]
+                    case 4: Emit24(Gen, 0x086348);      break; // NOTE(vak): 48 63 08      movsxd rcx, dword [rax]
+                    case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
+                }
+            }
+            else
+            {
+                switch (TypeSpec.Bytes)
+                {
+                    default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+                    // NOTE(vak): Operations involving 32-bit registers in x64 automatically zeroes
+                    // upper 32-bit part of register so there is using a 32-bit load is okay.
+
+                    case 1: Emit32(Gen, 0x08b60f48);    break; // NOTE(vak): 48 0f b6 08   movzx rcx, byte [rax]
+                    case 2: Emit32(Gen, 0x08b70f48);    break; // NOTE(vak): 48 0f b7 08   movzx rcx, word [rax]
+                    case 4: Emit16(Gen, 0x088b);        break; // NOTE(vak): 8b 00         mov ecx, [rax]
+                    case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
+                }
+            }
+        } break;
+    }
+}
+
+// NOTE(vak): Store value of node: RAX=MemoryAddress, RCX=StoreValue
+local void GenerateStore(gen_buffer* Gen, node* Node)
+{
+    switch (Node->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: unimplemented node kind in GenerateStore"));
+            Exit(1);
+        } break;
+
+        case NodeKind_Identifier:
+        {
+            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            if (!Symbol)
+            {
+                Print(Str("ERROR: undeclared identifier '"));
+                Print(Node->Identifier);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            type_spec TypeSpec = Symbol->TypeSpec;
+
+            switch (TypeSpec.Bytes)
+            {
+                default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+                case 1: Emit16(Gen, 0x0888);    break; // NOTE(vak): 88 08      mov [rax], cl
+                case 2: Emit24(Gen, 0x088966);  break; // NOTE(vak): 66 89 08   mov [rax], cx
+                case 4: Emit16(Gen, 0x0889);    break; // NOTE(vak): 89 08      mov [rax], ecx
+                case 8: Emit24(Gen, 0x088948);  break; // NOTE(vak): 48 89 08   mov [rax], rcx
+            }
         } break;
     }
 }
@@ -203,10 +303,11 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
         case NodeKind_Identifier:
         {
             GenerateAddress(Gen, Node);
+            GenerateLoad(Gen, Node);
 
             // NOTE(vak):
-            // 48 8b 00         mov rax, [rax]
-            Emit24(Gen, 0x008b48);
+            // 48 8b c1         mov rax, rcx
+            Emit24(Gen, 0xc18b48);
         } break;
 
         case NodeKind_Negate:
@@ -412,58 +513,102 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_Assign:
         {
-            GenerateAddress(Gen, Node->Left);
-            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
             GenerateNode(Gen, Node->Right);
+            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
+            GenerateAddress(Gen, Node->Left);
             Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
 
+            GenerateStore(Gen, Node->Left);
+
             // NOTE(vak):
-            // 48 89 01     mov [rcx], rax
-            Emit24(Gen, 0x018948);
+            // 48 8b c1     mov rax, rcx
+            Emit24(Gen, 0xc18b48);
+        } break;
+
+        case NodeKind_Declare:
+        {
+            type_spec TypeSpec = Node->TypeSpec;
+            string Name = Node->Identifier;
+
+            gen_symbol* Symbol = LookupSymbol(Gen, Name);
+            if (Symbol)
+            {
+                Print(Str("ERROR: redeclaration of identifier '"));
+                Print(Name);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            AddSymbol(Gen, Name, TypeSpec);
+
+            GenerateNode(Gen, Node->Initializer);
         } break;
 
         case NodeKind_PostIncrement:
         {
             GenerateAddress(Gen, Node->Left);
+            GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
-            // 48 8b 08     mov rcx, [rax]
-            // 48 ff 00     inc [rax]
-            // 48 8b c1     mov rax, rcx
-            Emit64(Gen, 0x8b4800ff48088b48);
-            Emit8(Gen, 0xc1);
+            // 51           push rcx
+            // 48 ff c1     inc rcx
+            Emit32(Gen, 0xc1ff4851);
+
+            GenerateStore(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 58           pop rax
+            Emit8(Gen, 0x58);
         } break;
 
         case NodeKind_PostDecrement:
         {
             GenerateAddress(Gen, Node->Left);
+            GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
-            // 48 8b 08     mov rcx, [rax]
-            // 48 ff 08     dec [rax]
-            // 48 8b c1     mov rax, rcx
-            Emit64(Gen, 0x8b4808ff48088b48);
-            Emit8(Gen, 0xc1);
+            // 51           push rcx
+            // 48 ff c9     dec rcx
+            Emit32(Gen, 0xc9ff4851);
+
+            GenerateStore(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 58           pop rax
+            Emit8(Gen, 0x58);
         } break;
 
         case NodeKind_PreIncrement:
         {
             GenerateAddress(Gen, Node->Left);
+            GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
-            // 48 ff 00     inc [rax]
-            // 48 8b 00     mov rax, [rax]
-            Emit48(Gen, 0x008b4800ff48);
+            // 48 ff c1     inc rcx
+            Emit24(Gen, 0xc1ff48);
+
+            GenerateStore(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 8b c1     mov rax, rcx
+            Emit24(Gen, 0xc18b48);
         } break;
 
         case NodeKind_PreDecrement:
         {
             GenerateAddress(Gen, Node->Left);
+            GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
-            // 48 ff 08     dec [rax]
-            // 48 8b 00     mov rax, [rax]
-            Emit48(Gen, 0x008b4808ff48);
+            // 48 ff c9     dec rcx
+            Emit24(Gen, 0xc9ff48);
+
+            GenerateStore(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 8b c1     mov rax, rcx
+            Emit24(Gen, 0xc18b48);
         } break;
     }
 }
