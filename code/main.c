@@ -147,6 +147,12 @@ local void Main(void)
         { -1,                       StaticStr("short int A = 65535; A;") },
         { 9223372036854775807,      StaticStr("long long int A = 9223372036854775807; A;") },
         { 4294967296,               StaticStr("unsigned int B = -1; unsigned long long A = B; A += 1; A;") },
+        { 10,                       StaticStr("int A = 5; if (A == 5) 10; else 2;") },
+        { 10,                       StaticStr("int A = 5; if (A == 5) { 10; } else { 2; }") },
+        { 2,                        StaticStr("int A = 5; if (A != 5) { 10; } else { 2; }") },
+        { 7,                        StaticStr("int A = 4; if (A == 5) { 10; } else if (A == 4) { 7; } else 2;") },
+        { 2,                        StaticStr("int A = 3; if (A == 5) { 10; } else if (A == 4) { 7; } else 2;") },
+        { 10,                       StaticStr("int A = 3; { int B = 5; } int B = 7; A + B;") },
     };
 
     usize TestsPassed = 0;

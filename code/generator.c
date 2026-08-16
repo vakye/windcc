@@ -27,6 +27,11 @@ struct gen_symbol
 
 typedef struct
 {
+    gen_symbol* RestoreTo;
+} gen_scope;
+
+typedef struct
+{
     u8* Base;
     usize Size;
     usize Used;
@@ -37,6 +42,7 @@ typedef struct
 
     gen_symbol* FirstSymbol;
     gen_symbol* LastSymbol;
+    gen_symbol* FirstFreeSymbol;
 } gen_buffer;
 
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
@@ -98,7 +104,16 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
 
 local gen_symbol* AddSymbol(gen_buffer* Gen, string Name, type_spec TypeSpec)
 {
-    gen_symbol* Symbol = Allocate(sizeof(gen_symbol));
+    gen_symbol* Symbol = Gen->FirstFreeSymbol;
+
+    if (!Symbol)
+    {
+        Symbol = Allocate(sizeof(gen_symbol));
+    }
+    else
+    {
+        Gen->FirstFreeSymbol = Symbol->Next;
+    }
 
     Gen->StackSize += TypeSpec.Bytes;
 
@@ -139,6 +154,31 @@ local gen_symbol* LookupSymbol(gen_buffer* Gen, string Name)
     }
 
     return (Result);
+}
+
+local gen_scope BeginScope(gen_buffer* Gen)
+{
+    gen_scope Scope =
+    {
+        .RestoreTo = Gen->LastSymbol,
+    };
+
+    return (Scope);
+}
+
+local void EndScope(gen_buffer* Gen, gen_scope Scope)
+{
+    gen_symbol* First = Scope.RestoreTo->Next;
+    gen_symbol* Last = Gen->LastSymbol;
+
+    if (First)
+    {
+        Gen->LastSymbol = Scope.RestoreTo;
+        Gen->LastSymbol->Next = 0;
+
+        Last->Next = Gen->FirstFreeSymbol;
+        Gen->FirstFreeSymbol = First;
+    }
 }
 
 local void GenerateAddress(gen_buffer* Gen, node* Node)
@@ -290,6 +330,22 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
         {
             Println(Str("ERROR: unimplemented node in GenerateNode"));
             Exit(1);
+        } break;
+
+        case NodeKind_Block:
+        {
+            gen_scope Scope = BeginScope(Gen);
+
+            for (
+                node* Statement = Node->FirstStatement;
+                Statement;
+                Statement = Statement->Next
+            )
+            {
+                GenerateNode(Gen, Statement);
+            }
+
+            EndScope(Gen, Scope);
         } break;
 
         case NodeKind_Integer:
@@ -511,40 +567,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             PlaceLabel(Gen, SkipElse);
         } break;
 
-        case NodeKind_Assign:
-        {
-            GenerateNode(Gen, Node->Right);
-            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
-            GenerateAddress(Gen, Node->Left);
-            Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
-
-            GenerateStore(Gen, Node->Left);
-
-            // NOTE(vak):
-            // 48 8b c1     mov rax, rcx
-            Emit24(Gen, 0xc18b48);
-        } break;
-
-        case NodeKind_Declare:
-        {
-            type_spec TypeSpec = Node->TypeSpec;
-            string Name = Node->Identifier;
-
-            gen_symbol* Symbol = LookupSymbol(Gen, Name);
-            if (Symbol)
-            {
-                Print(Str("ERROR: redeclaration of identifier '"));
-                Print(Name);
-                Print(Str("'"));
-                PrintNewLine();
-                Exit(1);
-            }
-
-            AddSymbol(Gen, Name, TypeSpec);
-
-            GenerateNode(Gen, Node->Initializer);
-        } break;
-
         case NodeKind_PostIncrement:
         {
             GenerateAddress(Gen, Node->Left);
@@ -609,6 +631,73 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // NOTE(vak):
             // 48 8b c1     mov rax, rcx
             Emit24(Gen, 0xc18b48);
+        } break;
+
+        case NodeKind_Assign:
+        {
+            GenerateNode(Gen, Node->Right);
+            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
+            GenerateAddress(Gen, Node->Left);
+            Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            GenerateStore(Gen, Node->Left);
+
+            // NOTE(vak):
+            // 48 8b c1     mov rax, rcx
+            Emit24(Gen, 0xc18b48);
+        } break;
+
+        case NodeKind_Declare:
+        {
+            type_spec TypeSpec = Node->TypeSpec;
+            string Name = Node->Identifier;
+
+            gen_symbol* Symbol = LookupSymbol(Gen, Name);
+            if (Symbol)
+            {
+                Print(Str("ERROR: redeclaration of identifier '"));
+                Print(Name);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            AddSymbol(Gen, Name, TypeSpec);
+
+            GenerateNode(Gen, Node->Initializer);
+        } break;
+
+        case NodeKind_If:
+        {
+            gen_label* SkipThen = AllocateLabel();
+
+            GenerateNode(Gen, Node->IfCond);
+
+            // NOTE(vak):
+            // 48 85 c0     test rax, rax
+            // 0f 84 Rel32  jz SkipThen
+            Emit40(Gen, 0x840fc08548);
+            EmitRel32(Gen, SkipThen);
+
+            GenerateNode(Gen, Node->IfThen);
+
+            if (Node->IfElse)
+            {
+                gen_label* SkipElse = AllocateLabel();
+
+                // NOTE(vak):
+                // e9 Rel32     jmp SkipElse
+                Emit8(Gen, 0xe9);
+                EmitRel32(Gen, SkipElse);
+
+                PlaceLabel(Gen, SkipThen);
+                GenerateNode(Gen, Node->IfElse);
+                PlaceLabel(Gen, SkipElse);
+            }
+            else
+            {
+                PlaceLabel(Gen, SkipThen);
+            }
         } break;
     }
 }

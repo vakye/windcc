@@ -5,6 +5,8 @@ typedef enum
 {
     NodeKind_Nil = 0,
 
+    NodeKind_Block,
+
     NodeKind_Integer,
     NodeKind_Identifier,
 
@@ -37,13 +39,14 @@ typedef enum
 
     NodeKind_Ternary,
 
-    NodeKind_Assign,
-    NodeKind_Declare,
-
     NodeKind_PostIncrement,
     NodeKind_PostDecrement,
     NodeKind_PreIncrement,
     NodeKind_PreDecrement,
+
+    NodeKind_Assign,
+    NodeKind_Declare,
+    NodeKind_If,
 } node_kind;
 
 typedef struct
@@ -71,6 +74,8 @@ struct node
     node* IfCond;
     node* IfThen;
     node* IfElse;
+
+    node* FirstStatement;
 };
 
 local node* AllocateNode(node_kind Kind, token* Token)
@@ -761,6 +766,60 @@ local type_spec ParseDeclarationSpecifiers(token** ParseAt)
     return (TypeSpec);
 }
 
+local node* ParseStatement(token** ParseAt);
+
+local node* ParseBlock(token** ParseAt)
+{
+    token* Token = *ParseAt;
+
+    if (Token->Kind != '{')
+    {
+        Println(Str("ERROR: expected '{' at start of block"));
+        Exit(1);
+    }
+
+    node* BlockNode = AllocateNode(NodeKind_Block, Token);
+
+    *ParseAt = Token->Next; // NOTE(vak): Skip '{'
+
+    node* FirstStatement = 0;
+    node* LastStatement = 0;
+
+    for (;;)
+    {
+        Token = *ParseAt;
+        if ((Token->Kind == TokenKind_EOF) || (Token->Kind == '}'))
+            break;
+
+        node* Statement = ParseStatement(ParseAt);
+        if (!Statement)
+            continue;
+
+        if (!FirstStatement)
+        {
+            FirstStatement = Statement;
+            LastStatement = Statement;
+        }
+        else
+        {
+            LastStatement->Next = Statement;
+            LastStatement = Statement;
+        }
+    }
+
+    if (Token->Kind != '}')
+    {
+        Println(Str("ERROR: missing '}' at end of block"));
+        Exit(1);
+    }
+
+    *ParseAt = Token->Next;
+
+    BlockNode->FirstStatement = FirstStatement;
+
+    return (BlockNode);
+}
+
 local node* ParseStatement(token** ParseAt)
 {
     token* Token = *ParseAt;
@@ -771,20 +830,57 @@ local node* ParseStatement(token** ParseAt)
     if (TypeSpec.Bytes)
     {
         Node = ParseDeclaration(ParseAt, TypeSpec);
+
+        Token = *ParseAt;
+        if (Token->Kind != ';')
+        {
+            Println(Str("ERROR: expected ';' at end of statement"));
+            Exit(1);
+        }
+
+        *ParseAt = Token->Next;
+    }
+    else if (Token->Kind == TokenKind_If)
+    {
+        Node = AllocateNode(NodeKind_If, Token);
+
+        *ParseAt = Token->Next;
+        Token = *ParseAt;
+
+        if (Token->Kind != '(')
+        {
+            Println(Str("ERROR: expected if conditional to start with '('"));
+            Exit(1);
+        }
+
+        Node->IfCond = ParseExpression(ParseAt);
+        Node->IfThen = ParseStatement(ParseAt);
+
+        Token = *ParseAt;
+
+        if (Token->Kind == TokenKind_Else)
+        {
+            *ParseAt = Token->Next;
+            Node->IfElse = ParseStatement(ParseAt);
+        }
+    }
+    else if (Token->Kind == '{')
+    {
+        Node = ParseBlock(ParseAt);
     }
     else
     {
         Node = ParseExpression(ParseAt);
-    }
 
-    Token = *ParseAt;
-    if (Token->Kind != ';')
-    {
-        Println(Str("ERROR: expected ';' at end of statement"));
-        Exit(1);
-    }
+        Token = *ParseAt;
+        if (Token->Kind != ';')
+        {
+            Println(Str("ERROR: expected ';' at end of statement"));
+            Exit(1);
+        }
 
-    *ParseAt = Token->Next;
+        *ParseAt = Token->Next;
+    }
 
     return (Node);
 }
