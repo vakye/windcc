@@ -68,7 +68,7 @@ struct node
 {
     node_kind Kind;
     node* Next;
-    token* Token;
+    token Token;
 
     usize Integer;
 
@@ -91,7 +91,7 @@ struct node
     node* ForBody;
 };
 
-local node* AllocateNode(node_kind Kind, token* Token)
+local node* AllocateNode(node_kind Kind, token Token)
 {
     node* Node = Allocate(sizeof(node));
 
@@ -102,7 +102,7 @@ local node* AllocateNode(node_kind Kind, token* Token)
     return (Node);
 }
 
-local node* AllocateUnaryNode(node_kind Kind, token* Token, node* Left)
+local node* AllocateUnaryNode(node_kind Kind, token Token, node* Left)
 {
     node* Node = AllocateNode(Kind, Token);
     Node->Left = Left;
@@ -110,7 +110,7 @@ local node* AllocateUnaryNode(node_kind Kind, token* Token, node* Left)
     return (Node);
 }
 
-local node* AllocateBinaryNode(node_kind Kind, token* Token, node* Left, node* Right)
+local node* AllocateBinaryNode(node_kind Kind, token Token, node* Left, node* Right)
 {
     node* Node = AllocateNode(Kind, Token);
 
@@ -127,41 +127,35 @@ local type_spec* AllocateTypeSpec(void)
     return (TypeSpec);
 }
 
-local node* ParseExpression(token** ParseAt);
+local node* ParseExpression(void);
 
-local node* ParsePrimary(token** ParseAt)
+local node* ParsePrimary(void)
 {
     node* Node = 0;
 
-    token* Token = *ParseAt;
-    if (Token->Kind == TokenKind_Integer)
+    token Token = GetCurrentToken();
+
+    if (NextIfMatchToken(TokenKind_Integer))
     {
         Node = AllocateNode(NodeKind_Integer, Token);
         Node->Integer = TokenToInteger(Token);
-        *ParseAt = Token->Next;
     }
-    else if (Token->Kind == TokenKind_Identifier)
+    else if (NextIfMatchToken(TokenKind_Identifier))
     {
         Node = AllocateNode(NodeKind_Identifier, Token);
-        Node->Identifier = Token->String;
-        *ParseAt = Token->Next;
+        Node->Identifier = Token.String;
     }
-    else if (Token->Kind == '(')
+    else if (NextIfMatchToken('('))
     {
-        *ParseAt = Token->Next;
+        Node = ParseExpression();
 
-        Node = ParseExpression(ParseAt);
-
-        Token = *ParseAt;
-        if (Token->Kind != ')')
+        if (!NextIfMatchToken(')'))
         {
             Println(Str("ERROR: expected matching ')'"));
             Exit(1);
         }
-
-        *ParseAt = Token->Next;
     }
-    else if (Token->Kind == ';')
+    else if (MatchToken(';'))
     {
         // NOTE(vak): Ignore
     }
@@ -174,22 +168,20 @@ local node* ParsePrimary(token** ParseAt)
     return (Node);
 }
 
-local node* ParsePostfix(token** ParseAt)
+local node* ParsePostfix(void)
 {
-    node* Node = ParsePrimary(ParseAt);
+    node* Node = ParsePrimary();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == TokenKind_DoublePlus)
+        if (NextIfMatchToken(TokenKind_DoublePlus))
         {
-            *ParseAt = Token->Next;
             Node = AllocateUnaryNode(NodeKind_PostIncrement, Token, Node);
         }
-        else if (Token->Kind == TokenKind_DoubleMinus)
+        else if (NextIfMatchToken(TokenKind_DoubleMinus))
         {
-            *ParseAt = Token->Next;
             Node = AllocateUnaryNode(NodeKind_PostDecrement, Token, Node);
         }
         else
@@ -201,81 +193,71 @@ local node* ParsePostfix(token** ParseAt)
     return (Node);
 }
 
-local node* ParsePrefix(token** ParseAt)
+local node* ParsePrefix(void)
 {
     node* Node = 0;
 
-    token* Token = *ParseAt;
-    if (Token->Kind == '-')
+    token Token = GetCurrentToken();
+
+    if (NextIfMatchToken('-'))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_Negate, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_Negate, Token, ParsePrefix());
     }
-    else if (Token->Kind == '!')
+    else if (NextIfMatchToken('!'))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_LogicalNot, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_LogicalNot, Token, ParsePrefix());
     }
-    else if (Token->Kind == '~')
+    else if (NextIfMatchToken('~'))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_BitwiseNot, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_BitwiseNot, Token, ParsePrefix());
     }
-    else if (Token->Kind == '+')
+    else if (NextIfMatchToken('+'))
     {
-        *ParseAt = Token->Next;
-        Node = ParsePrefix(ParseAt);
+        Node = ParsePrefix();
     }
-    else if (Token->Kind == TokenKind_DoublePlus)
+    else if (NextIfMatchToken(TokenKind_DoublePlus))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_PreIncrement, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_PreIncrement, Token, ParsePrefix());
     }
-    else if (Token->Kind == TokenKind_DoubleMinus)
+    else if (NextIfMatchToken(TokenKind_DoubleMinus))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_PreDecrement, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_PreDecrement, Token, ParsePrefix());
     }
-    else if (Token->Kind == '&')
+    else if (NextIfMatchToken('&'))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_AddressOf, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_AddressOf, Token, ParsePrefix());
     }
-    else if (Token->Kind == '*')
+    else if (NextIfMatchToken('*'))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateUnaryNode(NodeKind_Dereference, Token, ParsePrefix(ParseAt));
+        Node = AllocateUnaryNode(NodeKind_Dereference, Token, ParsePrefix());
     }
     else
     {
-        Node = ParsePostfix(ParseAt);
+        Node = ParsePostfix();
     }
 
     return (Node);
 }
 
-local node* ParseFactor(token** ParseAt)
+local node* ParseFactor(void)
 {
-    node* Node = ParsePrefix(ParseAt);
+    node* Node = ParsePrefix();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '*')
+        if (NextIfMatchToken('*'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParsePrefix(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParsePrefix());
         }
-        else if (Token->Kind == '/')
+        else if (NextIfMatchToken('/'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Div, Token, Node, ParsePrefix(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Div, Token, Node, ParsePrefix());
         }
-        else if (Token->Kind == '%')
+        else if (NextIfMatchToken('%'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParsePrefix(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParsePrefix());
         }
         else
         {
@@ -286,23 +268,21 @@ local node* ParseFactor(token** ParseAt)
     return (Node);
 }
 
-local node* ParseSum(token** ParseAt)
+local node* ParseSum(void)
 {
-    node* Node = ParseFactor(ParseAt);
+    node* Node = ParseFactor();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '+')
+        if (NextIfMatchToken('+'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseFactor(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseFactor());
         }
-        else if (Token->Kind == '-')
+        else if (NextIfMatchToken('-'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseFactor(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseFactor());
         }
         else
         {
@@ -313,23 +293,21 @@ local node* ParseSum(token** ParseAt)
     return (Node);
 }
 
-local node* ParseShift(token** ParseAt)
+local node* ParseShift(void)
 {
-    node* Node = ParseSum(ParseAt);
+    node* Node = ParseSum();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == TokenKind_DoubleLess)
+        if (NextIfMatchToken(TokenKind_DoubleLess))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseSum());
         }
-        else if (Token->Kind == TokenKind_DoubleGreater)
+        else if (NextIfMatchToken(TokenKind_DoubleGreater))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseSum(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseSum());
         }
         else
         {
@@ -340,33 +318,29 @@ local node* ParseShift(token** ParseAt)
     return (Node);
 }
 
-local node* ParseComparison(token** ParseAt)
+local node* ParseComparison(void)
 {
-    node* Node = ParseShift(ParseAt);
+    node* Node = ParseShift();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '<')
+        if (NextIfMatchToken('<'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseShift(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseShift());
         }
-        else if (Token->Kind == '>')
+        else if (NextIfMatchToken('>'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseShift(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseShift());
         }
-        else if (Token->Kind == TokenKind_LessEqual)
+        else if (NextIfMatchToken(TokenKind_LessEqual))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseShift(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseShift());
         }
-        else if (Token->Kind == TokenKind_GreaterEqual)
+        else if (NextIfMatchToken(TokenKind_GreaterEqual))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseShift(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseShift());
         }
         else
         {
@@ -377,23 +351,21 @@ local node* ParseComparison(token** ParseAt)
     return (Node);
 }
 
-local node* ParseEquality(token** ParseAt)
+local node* ParseEquality(void)
 {
-    node* Node = ParseComparison(ParseAt);
+    node* Node = ParseComparison();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == TokenKind_DoubleEqual)
+        if (NextIfMatchToken(TokenKind_DoubleEqual))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_Equal, Token, Node, ParseComparison(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_Equal, Token, Node, ParseComparison());
         }
-        else if (Token->Kind == TokenKind_BangEqual)
+        else if (NextIfMatchToken(TokenKind_BangEqual))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_NotEqual, Token, Node, ParseComparison(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_NotEqual, Token, Node, ParseComparison());
         }
         else
         {
@@ -404,18 +376,17 @@ local node* ParseEquality(token** ParseAt)
     return (Node);
 }
 
-local node* ParseAnd(token** ParseAt)
+local node* ParseAnd(void)
 {
-    node* Node = ParseEquality(ParseAt);
+    node* Node = ParseEquality();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '&')
+        if (NextIfMatchToken('&'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseEquality(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseEquality());
         }
         else
         {
@@ -426,18 +397,17 @@ local node* ParseAnd(token** ParseAt)
     return (Node);
 }
 
-local node* ParseXor(token** ParseAt)
+local node* ParseXor(void)
 {
-    node* Node = ParseAnd(ParseAt);
+    node* Node = ParseAnd();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '^')
+        if (NextIfMatchToken('^'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAnd(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAnd());
         }
         else
         {
@@ -448,18 +418,17 @@ local node* ParseXor(token** ParseAt)
     return (Node);
 }
 
-local node* ParseOr(token** ParseAt)
+local node* ParseOr(void)
 {
-    node* Node = ParseXor(ParseAt);
+    node* Node = ParseXor();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == '|')
+        if (NextIfMatchToken('|'))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseXor(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseXor());
         }
         else
         {
@@ -470,18 +439,17 @@ local node* ParseOr(token** ParseAt)
     return (Node);
 }
 
-local node* ParseLogicalAnd(token** ParseAt)
+local node* ParseLogicalAnd(void)
 {
-    node* Node = ParseOr(ParseAt);
+    node* Node = ParseOr();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == TokenKind_DoubleAmpersand)
+        if (NextIfMatchToken(TokenKind_DoubleAmpersand))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_LogicalAnd, Token, Node, ParseOr(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_LogicalAnd, Token, Node, ParseOr());
         }
         else
         {
@@ -492,18 +460,17 @@ local node* ParseLogicalAnd(token** ParseAt)
     return (Node);
 }
 
-local node* ParseLogicalOr(token** ParseAt)
+local node* ParseLogicalOr(void)
 {
-    node* Node = ParseLogicalAnd(ParseAt);
+    node* Node = ParseLogicalAnd();
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        token Token = GetCurrentToken();
 
-        if (Token->Kind == TokenKind_DoubleBar)
+        if (NextIfMatchToken(TokenKind_DoubleBar))
         {
-            *ParseAt = Token->Next;
-            Node = AllocateBinaryNode(NodeKind_LogicalOr, Token, Node, ParseLogicalAnd(ParseAt));
+            Node = AllocateBinaryNode(NodeKind_LogicalOr, Token, Node, ParseLogicalAnd());
         }
         else
         {
@@ -514,30 +481,26 @@ local node* ParseLogicalOr(token** ParseAt)
     return (Node);
 }
 
-local node* ParseTernary(token** ParseAt)
+local node* ParseTernary(void)
 {
-    node* Node = ParseLogicalOr(ParseAt);
+    node* Node = ParseLogicalOr();
 
-    token* Token = *ParseAt;
-    if (Token->Kind == '?')
+    token Token = GetCurrentToken();
+
+    if (NextIfMatchToken('?'))
     {
         node* TernaryNode = AllocateNode(NodeKind_Ternary, Token);
 
-        *ParseAt = Token->Next;
-
         TernaryNode->IfCond = Node;
-        TernaryNode->IfThen = ParseTernary(ParseAt);
+        TernaryNode->IfThen = ParseTernary();
 
-        Token = *ParseAt;
-        if (Token->Kind != ':')
+        if (!NextIfMatchToken(':'))
         {
             Println(Str("ERROR: missing ':' in ternary expression"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-
-        TernaryNode->IfElse = ParseTernary(ParseAt);
+        TernaryNode->IfElse = ParseTernary();
 
         Node = TernaryNode;
     }
@@ -545,99 +508,84 @@ local node* ParseTernary(token** ParseAt)
     return (Node);
 }
 
-local node* ParseAssignment(token** ParseAt)
+local node* ParseAssignment(void)
 {
-    node* Node = ParseTernary(ParseAt);
+    node* Node = ParseTernary();
 
-    token* Token = *ParseAt;
-    if (Token->Kind == '=')
+    token Token = GetCurrentToken();
+
+    if (NextIfMatchToken('='))
     {
-        *ParseAt = Token->Next;
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, ParseAssignment(ParseAt));
+        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, ParseAssignment());
     }
-    else if (Token->Kind == TokenKind_PlusEqual)
+    else if (NextIfMatchToken(TokenKind_PlusEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_MinusEqual)
+    else if (NextIfMatchToken(TokenKind_MinusEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_StarEqual)
+    else if (NextIfMatchToken(TokenKind_StarEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_SlashEqual)
+    else if (NextIfMatchToken(TokenKind_SlashEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_Div, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_Div, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_PercentEqual)
+    else if (NextIfMatchToken(TokenKind_PercentEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_DoubleLessEqual)
+    else if (NextIfMatchToken(TokenKind_DoubleLessEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_DoubleGreaterEqual)
+    else if (NextIfMatchToken(TokenKind_DoubleGreaterEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_AmpersandEqual)
+    else if (NextIfMatchToken(TokenKind_AmpersandEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_HatEqual)
+    else if (NextIfMatchToken(TokenKind_HatEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
-    else if (Token->Kind == TokenKind_BarEqual)
+    else if (NextIfMatchToken(TokenKind_BarEqual))
     {
-        *ParseAt = Token->Next;
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseAssignment(ParseAt));
+        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseAssignment());
         Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
     }
 
     return (Node);
 }
 
-local node* ParseExpression(token** ParseAt)
+local node* ParseExpression(void)
 {
-    node* Node = ParseAssignment(ParseAt);
+    node* Node = ParseAssignment();
     return (Node);
 }
 
-local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
+local node* ParseDeclaration(type_spec TypeSpec)
 {
-    token* Token = *ParseAt;
-
-    node* Node = AllocateNode(NodeKind_Declare, Token);
+    node* Node = AllocateNode(NodeKind_Declare, GetCurrentToken());
 
     Node->TypeSpec = TypeSpec;
 
-    while (Token->Kind == '*')
+    while (NextIfMatchToken('*'))
     {
-        *ParseAt = Token->Next;
-        Token = *ParseAt;
-
         type_spec* PointingTo = AllocateTypeSpec();
         *PointingTo = Node->TypeSpec;
 
@@ -645,177 +593,119 @@ local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
         Node->TypeSpec.PointingTo = PointingTo;
     }
 
-    if (Token->Kind != TokenKind_Identifier)
+    token Token = GetCurrentToken();
+
+    if (!MatchToken(TokenKind_Identifier))
     {
         Print(Str("ERROR: '"));
-        Print(Token->String);
+        Print(Token.String);
         Print(Str("' is not a valid variable name"));
         PrintNewLine();
         Exit(1);
     }
 
-    Node->Identifier = Token->String;
+    Node->Identifier = Token.String;
 
     // NOTE(vak): No need to advance past identifier since ParseExpression
     // can use it to generate an assignment node.
 
-    Node->Initializer = ParseExpression(ParseAt);
+    Node->Initializer = ParseExpression();
 
     return (Node);
 }
 
-local type_spec ParseDeclarationSpecifiers(token** ParseAt)
+local type_spec ParseDeclarationSpecifiers(void)
 {
-    type_spec TypeSpec = {0};
-    TypeSpec.Signed = true;
+    u32 UnsignedCount = 0;
+    u32 SignedCount = 0;
+    u32 IntCount = 0;
+    u32 ShortCount = 0;
+    u32 CharCount = 0;
+    u32 LongCount = 0;
 
-    b32 DetectedUnsigned = false;
-    b32 DetectedSigned = false;
-    b32 DetectedInt = false;
-    b32 DetectedShort = false;
-    b32 DetectedChar = false;
-    b32 DetectedLong = false;
-    b32 DetectedLongLong = false;
+    // NOTE(vak): Count qualifiers
 
     for (;;)
     {
-        token* Token = *ParseAt;
+        if (0) {}
+        else if (NextIfMatchToken(TokenKind_Unsigned))      UnsignedCount++;
+        else if (NextIfMatchToken(TokenKind_Signed))        SignedCount++;
+        else if (NextIfMatchToken(TokenKind_Int))           IntCount++;
+        else if (NextIfMatchToken(TokenKind_Short))         ShortCount++;
+        else if (NextIfMatchToken(TokenKind_Char))          CharCount++;
+        else if (NextIfMatchToken(TokenKind_Long))          LongCount++;
+        else break;
+    }
 
-        if (Token->Kind == TokenKind_Unsigned)
-        {
-            if (DetectedUnsigned)
-            {
-                Println(Str("ERROR: multiple 'unsigned' specifiers"));
-                Exit(1);
-            }
+    // NOTE(vak): Count check
+    {
+        b32 HasError = true;
 
-            if (DetectedSigned)
-            {
-                Println(Str("ERROR: 'signed' and 'unsigned' specifiers used together"));
-                Exit(1);
-            }
+        if (0) {}
+        else if (UnsignedCount > 1)     Println(Str("ERROR: too many 'unsigned' in declaration"));
+        else if (SignedCount > 1)       Println(Str("ERROR: too many 'signed' in declaration"));
+        else if (IntCount > 1)          Println(Str("ERROR: too many 'int' in declaration"));
+        else if (ShortCount > 1)        Println(Str("ERROR: too many 'short' in declaration"));
+        else if (CharCount > 1)         Println(Str("ERROR: too many 'char' in declaration"));
+        else if (LongCount > 2)         Println(Str("ERROR: too many 'long' in declaration"));
+        else HasError = false;
 
-            TypeSpec.Signed = false;
-            DetectedUnsigned = true;
+        if (HasError)
+            Exit(1);
+    }
 
-            *ParseAt = Token->Next;
-        }
-        else if (Token->Kind == TokenKind_Signed)
-        {
-            if (DetectedSigned)
-            {
-                Println(Str("ERROR: multiple 'signed' specifiers"));
-                Exit(1);
-            }
+    // NOTE(vak): Qualifier checks
+    {
+        b32 HasError = true;
 
-            if (DetectedUnsigned)
-            {
-                Println(Str("ERROR: 'signed' and 'unsigned' specifiers used together"));
-                Exit(1);
-            }
+        b32 NoTypeSpecified =
+            (UnsignedCount || SignedCount) &&
+            !(IntCount || CharCount || ShortCount || LongCount);
 
-            TypeSpec.Signed = true;
-            DetectedUnsigned = true;
+        b32 ConflictingTypes =
+            (CharCount && ShortCount) ||
+            (CharCount && LongCount) ||
+            (ShortCount && CharCount);
 
-            *ParseAt = Token->Next;
-        }
-        else if (Token->Kind == TokenKind_Long)
-        {
-            if (DetectedShort || DetectedChar)
-            {
-                Println(Str("ERROR: multiple types specified in declaration"));
-                Exit(1);
-            }
+        b32 ConflictingSign =
+            (UnsignedCount && SignedCount);
 
-            if (DetectedLongLong)
-            {
-                Println(Str("ERROR: too many 'long' in declaration"));
-                Exit(1);
-            }
-
-            if (DetectedLong)
-            {
-                DetectedLongLong = true;
-                TypeSpec.Bytes = 8;
-            }
-            else
-            {
-                DetectedLong = true;
-                TypeSpec.Bytes = 4;
-            }
-
-            *ParseAt = Token->Next;
-        }
-        else if (Token->Kind == TokenKind_Int)
-        {
-            if (DetectedInt)
-            {
-                Println(Str("ERROR: multiple 'int' in declaration"));
-                Exit(1);
-            }
-
-            if (!DetectedChar && !DetectedShort && !DetectedLong)
-            {
-                TypeSpec.Bytes = 4;
-            }
-
-            DetectedInt = true;
-            *ParseAt = Token->Next;
-        }
-        else if (Token->Kind == TokenKind_Short)
-        {
-            if (DetectedShort)
-            {
-                Println(Str("ERROR: multiple 'short' in declaration"));
-                Exit(1);
-            }
-
-            if (DetectedChar || DetectedLong)
-            {
-                Println(Str("ERROR: multiple types specified in declaration"));
-                Exit(1);
-            }
-
-            TypeSpec.Bytes = 2;
-            DetectedShort = true;
-
-            *ParseAt = Token->Next;
-        }
-        else if (Token->Kind == TokenKind_Char)
-        {
-            if (DetectedChar)
-            {
-                Println(Str("ERROR: multiple 'char' in declaration"));
-                Exit(1);
-            }
-
-            if (DetectedShort || DetectedLong)
-            {
-                Println(Str("ERROR: multiple types specified in declaration"));
-                Exit(1);
-            }
-
-            TypeSpec.Bytes = 1;
-            DetectedChar = true;
-
-            *ParseAt = Token->Next;
-        }
+        if (0) {}
+        else if (NoTypeSpecified)       Println(Str("ERROR: no type qualifier in declaration"));
+        else if (ConflictingTypes)      Println(Str("ERROR: conflicting type qualifiers in declaration"));
+        else if (ConflictingSign)       Println(Str("ERROR: conflicting sign qualifier in declaration"));
         else
-        {
-            break;
-        }
+            HasError = false;
+
+        if (HasError)
+            Exit(1);
+    }
+
+    type_spec TypeSpec = {0};
+
+    // NOTE(vak): Construct type spec
+    {
+        if (UnsignedCount)          TypeSpec.Signed = false;
+        else                        TypeSpec.Signed = true;
+
+        if (0) {}
+        else if (LongCount  == 2)   TypeSpec.Bytes = 8;
+        else if (LongCount  == 1)   TypeSpec.Bytes = 4;
+        else if (ShortCount == 1)   TypeSpec.Bytes = 2;
+        else if (CharCount  == 1)   TypeSpec.Bytes = 1;
+        else if (IntCount   == 1)   TypeSpec.Bytes = 4; // NOTE(vak): "int" case should be put last to prevent conflict
     }
 
     return (TypeSpec);
 }
 
-local node* ParseStatement(token** ParseAt);
+local node* ParseStatement(void);
 
-local node* ParseBlock(token** ParseAt)
+local node* ParseBlock(void)
 {
-    token* Token = *ParseAt;
+    token Token = GetCurrentToken();
 
-    if (Token->Kind != '{')
+    if (!NextIfMatchToken('{'))
     {
         Println(Str("ERROR: expected '{' at start of block"));
         Exit(1);
@@ -823,18 +713,15 @@ local node* ParseBlock(token** ParseAt)
 
     node* BlockNode = AllocateNode(NodeKind_Block, Token);
 
-    *ParseAt = Token->Next; // NOTE(vak): Skip '{'
-
     node* FirstStatement = 0;
     node* LastStatement = 0;
 
     for (;;)
     {
-        Token = *ParseAt;
-        if ((Token->Kind == TokenKind_EOF) || (Token->Kind == '}'))
+        if (MatchToken(TokenKind_EOF) || MatchToken('}'))
             break;
 
-        node* Statement = ParseStatement(ParseAt);
+        node* Statement = ParseStatement();
         if (!Statement)
             continue;
 
@@ -850,234 +737,175 @@ local node* ParseBlock(token** ParseAt)
         }
     }
 
-    if (Token->Kind != '}')
+    if (!NextIfMatchToken('}'))
     {
         Println(Str("ERROR: missing '}' at end of block"));
         Exit(1);
     }
-
-    *ParseAt = Token->Next;
 
     BlockNode->FirstStatement = FirstStatement;
 
     return (BlockNode);
 }
 
-local node* ParseStatement(token** ParseAt)
+local node* ParseStatement(void)
 {
-    token* Token = *ParseAt;
-
     node* Node = 0;
 
-    type_spec TypeSpec = ParseDeclarationSpecifiers(ParseAt);
+    token Token = GetCurrentToken();
+
+    type_spec TypeSpec = ParseDeclarationSpecifiers();
     if (TypeSpec.Bytes)
     {
-        Node = ParseDeclaration(ParseAt, TypeSpec);
+        Node = ParseDeclaration(TypeSpec);
 
-        Token = *ParseAt;
-        if (Token->Kind != ';')
+        if (!NextIfMatchToken(';'))
         {
             Println(Str("ERROR: expected ';' at end of statement"));
             Exit(1);
         }
-
-        *ParseAt = Token->Next;
     }
-    else if (Token->Kind == TokenKind_If)
+    else if (NextIfMatchToken(TokenKind_If))
     {
         Node = AllocateNode(NodeKind_If, Token);
 
-        *ParseAt = Token->Next;
-        Token = *ParseAt;
-
-        if (Token->Kind != '(')
+        if (!MatchToken('('))
         {
             Println(Str("ERROR: expected if conditional to start with '('"));
             Exit(1);
         }
 
-        Node->IfCond = ParseExpression(ParseAt);
-        Node->IfThen = ParseStatement(ParseAt);
+        Node->IfCond = ParseExpression();
 
-        Token = *ParseAt;
+        Node->IfThen = ParseStatement();
 
-        if (Token->Kind == TokenKind_Else)
+        if (NextIfMatchToken(TokenKind_Else))
         {
-            *ParseAt = Token->Next;
-            Node->IfElse = ParseStatement(ParseAt);
+            Node->IfElse = ParseStatement();
         }
     }
-    else if (Token->Kind == TokenKind_For)
+    else if (NextIfMatchToken(TokenKind_For))
     {
         Node = AllocateNode(NodeKind_For, Token);
 
-        *ParseAt = Token->Next;
-        Token = *ParseAt;
-
-        if (Token->Kind != '(')
+        if (!NextIfMatchToken('('))
         {
             Println(Str("ERROR: expected '(' after for"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-
         // NOTE(vak): For loop init clause can either be a declaration or
         // an expression
 
-        type_spec TypeSpec = ParseDeclarationSpecifiers(ParseAt);
+        type_spec TypeSpec = ParseDeclarationSpecifiers();
+
         if (TypeSpec.Bytes)
-        {
-            Node->ForInit = ParseDeclaration(ParseAt, TypeSpec);
-
-        }
+            Node->ForInit = ParseDeclaration(TypeSpec);
         else
-        {
-            Node->ForInit = ParseExpression(ParseAt);
-        }
+            Node->ForInit = ParseExpression();
 
-        Token = *ParseAt;
-        if (Token->Kind != ';')
+        if (!NextIfMatchToken(';'))
         {
             Println(Str("ERROR: expected ';' at end of statement"));
             Exit(1);
         }
-
-        *ParseAt = Token->Next;
 
         // NOTE(vak): For loop condition
 
-        Node->ForCond = ParseExpression(ParseAt);
+        Node->ForCond = ParseExpression();
 
-        Token = *ParseAt;
-        if (Token->Kind != ';')
+        if (!NextIfMatchToken(';'))
         {
             Println(Str("ERROR: expected ';' at end of statement"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-
         // NOTE(vak): For loop iteration update
 
-        Node->ForIter = ParseExpression(ParseAt);
+        Node->ForIter = ParseExpression();
 
-        Token = *ParseAt;
-        if (Token->Kind != ')')
+        if (!NextIfMatchToken(')'))
         {
             Println(Str("ERROR: missing ')' in for loop"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-
-        Node->ForBody = ParseStatement(ParseAt);
+        Node->ForBody = ParseStatement();
     }
-    else if (Token->Kind == TokenKind_While)
+    else if (NextIfMatchToken(TokenKind_While))
     {
         Node = AllocateNode(NodeKind_For, Token);
 
-        *ParseAt = Token->Next;
-        Token = *ParseAt;
-
-        if (Token->Kind != '(')
+        if (!MatchToken('('))
         {
             Println(Str("ERROR: expected '(' after while"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-
-        Node->ForCond = ParseExpression(ParseAt);
-
-        Token = *ParseAt;
-
-        if (Token->Kind != ')')
-        {
-            Println(Str("ERROR: expected ')' after while conditional"));
-            Exit(1);
-        }
-
-        *ParseAt = Token->Next;
-
-        Node->ForBody = ParseStatement(ParseAt);
+        Node->ForCond = ParseExpression();
+        Node->ForBody = ParseStatement();
     }
-    else if (Token->Kind == TokenKind_Do)
+    else if (NextIfMatchToken(TokenKind_Do))
     {
         Node = AllocateNode(NodeKind_For, Token);
 
-        *ParseAt = Token->Next;
-
-        Node->ForBody = ParseStatement(ParseAt);
+        Node->ForBody = ParseStatement();
         Node->ForInit = Node->ForBody;
 
-        Token = *ParseAt;
-
-        if (Token->Kind != TokenKind_While)
+        if (!NextIfMatchToken(TokenKind_While))
         {
             Println(Str("ERROR: missing 'while' in do-while loop"));
             Exit(1);
         }
 
-        *ParseAt = Token->Next;
-        Token = *ParseAt;
-
-        if (Token->Kind != '(')
+        if (!MatchToken('('))
         {
             Println(Str("ERROR: expected '(' after while"));
             Exit(1);
         }
 
-        Node->ForCond = ParseExpression(ParseAt);
+        Node->ForCond = ParseExpression();
 
-        Token = *ParseAt;
-        if (Token->Kind != ';')
+        if (!NextIfMatchToken(';'))
         {
             Println(Str("ERROR: expected ';' at end of do-while loop"));
             Exit(1);
         }
     }
-    else if (Token->Kind == TokenKind_Break)
+    else if (NextIfMatchToken(TokenKind_Break))
     {
         Node = AllocateNode(NodeKind_Break, Token);
-        *ParseAt = Token->Next;
     }
-    else if (Token->Kind == TokenKind_Continue)
+    else if (NextIfMatchToken(TokenKind_Continue))
     {
         Node = AllocateNode(NodeKind_Continue, Token);
-        *ParseAt = Token->Next;
     }
-    else if (Token->Kind == '{')
+    else if (MatchToken('{'))
     {
-        Node = ParseBlock(ParseAt);
+        Node = ParseBlock();
     }
     else
     {
-        Node = ParseExpression(ParseAt);
+        Node = ParseExpression();
 
-        Token = *ParseAt;
-        if (Token->Kind != ';')
+        if (!NextIfMatchToken(';'))
         {
             Println(Str("ERROR: expected ';' at end of statement"));
             Exit(1);
         }
-
-        *ParseAt = Token->Next;
     }
 
     return (Node);
 }
 
-local node* Parse(token* FirstToken)
+local node* Parse(void)
 {
-    token* ParseAt = FirstToken;
-
     node* First = 0;
     node* Last = 0;
 
-    while (ParseAt->Kind != TokenKind_EOF)
+    while (!MatchToken(TokenKind_EOF))
     {
-        node* Statement = ParseStatement(&ParseAt);
+        node* Statement = ParseStatement();
         if (!Statement)
             continue;
 

@@ -58,6 +58,45 @@ struct token
     token* Next;
 };
 
+typedef struct
+{
+    string Code;
+    usize Index;
+    token CurrentToken;
+} lexer;
+
+local lexer Lexer = {0};
+
+local void NextToken(void);
+
+local void EquipLexerCode(string Code)
+{
+    Lexer.Code = Code;
+    Lexer.Index = 0;
+
+    NextToken(); // NOTE(vak): Initializes Lexer.CurrentToken
+}
+
+local token GetCurrentToken(void)
+{
+    return (Lexer.CurrentToken);
+}
+
+local b32 MatchToken(token_kind Kind)
+{
+    b32 Result = (Lexer.CurrentToken.Kind == Kind);
+    return (Result);
+}
+
+local b32 NextIfMatchToken(token_kind Kind)
+{
+    b32 Result = MatchToken(Kind);
+    if (Result)
+        NextToken();
+
+    return (Result);
+}
+
 local b32 IsPrintable(char Character)
 {
     b32 Result = ((Character >= 32) && (Character <= 126));
@@ -102,164 +141,231 @@ local b32 IsIdentifier(char Character)
     return (Result);
 }
 
-local token* Tokenize(string Code)
+local char PeekCharacter(void)
 {
-    token Sentinel = {0};
-    token* Last = &Sentinel;
+    char Character = 0;
 
-    usize Index = 0;
-    while (Index < Code.Size)
+    if (Lexer.Index < Lexer.Code.Size)
     {
-        while (Index < Code.Size)
-        {
-            if (!IsWhitespace(Code.Data[Index]))
-                break;
+        Character = Lexer.Code.Data[Lexer.Index];
+    }
 
-            Index++;
-        }
+    return (Character);
+}
 
-        if (Index == Code.Size)
+local char PeekAheadCharacter(usize Offset)
+{
+    char Character = 0;
+
+    if (Lexer.Index + Offset < Lexer.Code.Size)
+    {
+        Character = Lexer.Code.Data[Lexer.Index + Offset];
+    }
+
+    return (Character);
+}
+
+local void ConsumeCharacter(void)
+{
+    if (Lexer.Index < Lexer.Code.Size)
+    {
+        Lexer.Index++;
+    }
+}
+
+local void SkipWhitespace(void)
+{
+    while (Lexer.Index < Lexer.Code.Size)
+    {
+        char Character = PeekCharacter();
+
+        if (!IsWhitespace(Character))
             break;
 
-        Last = Last->Next = Allocate(sizeof(token));
+        ConsumeCharacter();
+    }
+}
 
-        usize From = Index;
+local token_kind TokenizeDigit(void)
+{
+    token_kind Result = TokenKind_Integer;
 
-        if (IsDigit(Code.Data[Index]))
+    ConsumeCharacter();
+
+    while (Lexer.Index < Lexer.Code.Size)
+    {
+        char Character = PeekCharacter();
+
+        if (!IsDigit(Character))
+            break;
+
+        ConsumeCharacter();
+    }
+
+    return (Result);
+}
+
+typedef struct
+{
+    token_kind Kind;
+    string String;
+} keyword_mapping;
+
+local token_kind TokenizeIdentifier(void)
+{
+    token_kind Result = TokenKind_Identifier;
+
+    usize From = Lexer.Index;
+
+    ConsumeCharacter();
+
+    while (Lexer.Index < Lexer.Code.Size)
+    {
+        char Character = PeekCharacter();
+
+        if (!IsIdentifier(Character))
+            break;
+
+        ConsumeCharacter();
+    }
+
+    persist keyword_mapping KeywordMappings[] =
+    {
+        { TokenKind_Int,            StaticStr("int") },
+        { TokenKind_Char,           StaticStr("char") },
+        { TokenKind_Short,          StaticStr("short") },
+        { TokenKind_Unsigned,       StaticStr("unsigned") },
+        { TokenKind_Signed,         StaticStr("signed") },
+        { TokenKind_Long,           StaticStr("long") },
+        { TokenKind_If,             StaticStr("if") },
+        { TokenKind_Else,           StaticStr("else") },
+        { TokenKind_For,            StaticStr("for") },
+        { TokenKind_While,          StaticStr("while") },
+        { TokenKind_Do,             StaticStr("do") },
+        { TokenKind_Break,          StaticStr("break") },
+        { TokenKind_Continue,       StaticStr("continue") },
+    };
+
+    usize Size = Lexer.Index - From;
+    string Slice = StringView(Lexer.Code, From, Size);
+
+    for (usize Index = 0; Index < ArrayCount(KeywordMappings); Index++)
+    {
+        keyword_mapping* Mapping = KeywordMappings + Index;
+
+        if (StringEqual(Slice, Mapping->String))
         {
-            // NOTE(vak): Integer
-
-            Last->Kind = TokenKind_Integer;
-
-            Index++;
-            while (Index < Code.Size)
-            {
-                if (!IsDigit(Code.Data[Index]))
-                    break;
-
-                Index++;
-            }
+            Result = Mapping->Kind;
+            break;
         }
-        else if (IsIdentifierStart(Code.Data[Index]))
-        {
-            // NOTE(vak): Identifier
+    }
 
-            Last->Kind = TokenKind_Identifier;
+    return (Result);
+}
 
-            Index++;
-            while (Index < Code.Size)
-            {
-                if (!IsIdentifier(Code.Data[Index]))
-                    break;
+local token_kind TokenizePunctuation(void)
+{
+    char C0 = PeekAheadCharacter(0);
+    char C1 = PeekAheadCharacter(1);
+    char C2 = PeekAheadCharacter(2);
 
-                Index++;
+    // NOTE(vak): 3 character operators
+    if (Lexer.Index + 3 <= Lexer.Code.Size)
+    {
+        u32 Value = ((u32)C0) | ((u32)C1 << 8) | ((u32)C2 << 16);
+
+        #define Match3(C0, C1, C2, MatchToKind) \
+            else if (Value == ((u32)C0 | ((u32)C1 << 8) | ((u32)C2 << 16))) \
+            { \
+                Lexer.Index += 3; \
+                return (MatchToKind); \
             }
 
-            usize Size = Index - From;
-            string Slice = StringView(Code, From, Size);
+        if (0) {}
+        Match3('<', '<', '=', TokenKind_DoubleLessEqual)
+        Match3('>', '>', '=', TokenKind_DoubleGreaterEqual)
 
-            if (StringEqual(Slice, Str("int")))
-                Last->Kind = TokenKind_Int;
-            else if (StringEqual(Slice, Str("char")))
-                Last->Kind = TokenKind_Char;
-            else if (StringEqual(Slice, Str("short")))
-                Last->Kind = TokenKind_Short;
-            else if (StringEqual(Slice, Str("unsigned")))
-                Last->Kind = TokenKind_Unsigned;
-            else if (StringEqual(Slice, Str("signed")))
-                Last->Kind = TokenKind_Signed;
-            else if (StringEqual(Slice, Str("long")))
-                Last->Kind = TokenKind_Long;
-            else if (StringEqual(Slice, Str("if")))
-                Last->Kind = TokenKind_If;
-            else if (StringEqual(Slice, Str("else")))
-                Last->Kind = TokenKind_Else;
-            else if (StringEqual(Slice, Str("for")))
-                Last->Kind = TokenKind_For;
-            else if (StringEqual(Slice, Str("while")))
-                Last->Kind = TokenKind_While;
-            else if (StringEqual(Slice, Str("do")))
-                Last->Kind = TokenKind_Do;
-            else if (StringEqual(Slice, Str("break")))
-                Last->Kind = TokenKind_Break;
-            else if (StringEqual(Slice, Str("continue")))
-                Last->Kind = TokenKind_Continue;
+        #undef Match3
+    }
+
+    // NOTE(vak): 2 character operators
+    if (Lexer.Index + 2 <= Lexer.Code.Size)
+    {
+        u32 Value = ((u32)C0) | ((u32)C1 << 8);
+
+        #define Match2(C0, C1, MatchToKind) \
+            else if (Value == ((u32)C0 | ((u32)C1 << 8))) \
+            { \
+                Lexer.Index += 2; \
+                return (MatchToKind); \
+            }
+
+        if (0) {}
+
+        Match2('=', '=', TokenKind_DoubleEqual)
+        Match2('!', '=', TokenKind_BangEqual)
+        Match2('<', '=', TokenKind_LessEqual)
+        Match2('>', '=', TokenKind_GreaterEqual)
+
+        Match2('<', '<', TokenKind_DoubleLess)
+        Match2('>', '>', TokenKind_DoubleGreater)
+
+        Match2('&', '&', TokenKind_DoubleAmpersand)
+        Match2('|', '|', TokenKind_DoubleBar)
+
+        Match2('+', '=', TokenKind_PlusEqual)
+        Match2('-', '=', TokenKind_MinusEqual)
+        Match2('*', '=', TokenKind_StarEqual)
+        Match2('/', '=', TokenKind_SlashEqual)
+        Match2('%', '=', TokenKind_PercentEqual)
+        Match2('&', '=', TokenKind_AmpersandEqual)
+        Match2('^', '=', TokenKind_HatEqual)
+        Match2('|', '=', TokenKind_BarEqual)
+
+        Match2('+', '+', TokenKind_DoublePlus)
+        Match2('-', '-', TokenKind_DoubleMinus)
+
+        #undef Match2
+    }
+
+    // NOTE(vak): 1 character operators
+
+    token_kind Result = (token_kind)C0;
+    ConsumeCharacter();
+
+    return (Result);
+}
+
+local void NextToken(void)
+{
+    token Token =
+    {
+        .Kind = TokenKind_EOF,
+    };
+
+    SkipWhitespace();
+
+    if (Lexer.Index < Lexer.Code.Size)
+    {
+        char Character = PeekCharacter();
+
+        usize From = Lexer.Index;
+
+        if (IsDigit(Character))
+        {
+            Token.Kind = TokenizeDigit();
         }
-        else if (IsPrintable(Code.Data[Index]))
+        else if (IsIdentifierStart(Character))
         {
-            // NOTE(vak): Punctuation
-
-            char Character = Code.Data[Index];
-            Index++;
-
-            Last->Kind = (token_kind)Character;
-
-            u32 MatchValue = Character;
-
-            if (Index + 1 <= Code.Size)
-            {
-                MatchValue |= (u32)Code.Data[Index] << 8;
-
-                if (Index + 2 <= Code.Size)
-                    MatchValue |= (u32)Code.Data[Index + 1] << 16;
-            }
-
-            b32 AlreadyMatched = true;
-
-            // NOTE(vak): 3 character operators
-
-            switch (MatchValue)
-            {
-                default: AlreadyMatched = false; break;
-
-                #define MatchCase(C0, C1, C2, MatchToKind) \
-                    case (C0) | (C1 << 8) | (C2 << 16): Last->Kind = MatchToKind; Index += 2; break
-
-                MatchCase('<', '<', '=', TokenKind_DoubleLessEqual);
-                MatchCase('>', '>', '=', TokenKind_DoubleGreaterEqual);
-
-                #undef MatchCase
-            }
-
-            if (!AlreadyMatched)
-            {
-                // NOTE(vak): 2 character operators
-
-                switch (MatchValue & 0xFFFF)
-                {
-                    #define MatchCase(C0, C1, MatchToKind) \
-                        case (C0) | (C1 << 8): Last->Kind = MatchToKind; Index++; break
-
-                    MatchCase('=', '=', TokenKind_DoubleEqual);
-                    MatchCase('!', '=', TokenKind_BangEqual);
-                    MatchCase('<', '=', TokenKind_LessEqual);
-                    MatchCase('>', '=', TokenKind_GreaterEqual);
-
-                    MatchCase('<', '<', TokenKind_DoubleLess);
-                    MatchCase('>', '>', TokenKind_DoubleGreater);
-
-                    MatchCase('&', '&', TokenKind_DoubleAmpersand);
-                    MatchCase('|', '|', TokenKind_DoubleBar);
-
-                    MatchCase('+', '=', TokenKind_PlusEqual);
-                    MatchCase('-', '=', TokenKind_MinusEqual);
-                    MatchCase('*', '=', TokenKind_StarEqual);
-                    MatchCase('/', '=', TokenKind_SlashEqual);
-                    MatchCase('%', '=', TokenKind_PercentEqual);
-                    MatchCase('&', '=', TokenKind_AmpersandEqual);
-                    MatchCase('^', '=', TokenKind_HatEqual);
-                    MatchCase('|', '=', TokenKind_BarEqual);
-
-                    MatchCase('+', '+', TokenKind_DoublePlus);
-                    MatchCase('-', '-', TokenKind_DoubleMinus);
-
-                    #undef MatchCase
-                }
-            }
+            Token.Kind = TokenizeIdentifier();
+        }
+        else if (IsPrintable(Character))
+        {
+            Token.Kind = TokenizePunctuation();
         }
         else
         {
-            u8 Character = (u8)Code.Data[Index];
+            u8 Character = (u8)PeekCharacter();
 
             Print(Str("ERROR: Unknown character \\"));
             PrintUSize(Character);
@@ -268,29 +374,24 @@ local token* Tokenize(string Code)
             Exit(1);
         }
 
-        usize Size = Index - From;
+        usize Size = Lexer.Index - From;
 
-        Last->String = StringView(Code, From, Size);
+        Token.String = StringView(Lexer.Code, From, Size);
     }
 
-    Last = Last->Next = Allocate(sizeof(token));
-    Last->Kind = TokenKind_EOF;
-    Last->String = Str("");
-
-    token* First = Sentinel.Next;
-    return (First);
+    Lexer.CurrentToken = Token;
 }
 
-local usize TokenToInteger(token* Token)
+local usize TokenToInteger(token Token)
 {
     // NOTE(vak): Assuming Token->Kind == TokenKind_Integer
 
     usize Result = 0;
 
-    for (usize Index = 0; Index < Token->String.Size; Index++)
+    for (usize Index = 0; Index < Token.String.Size; Index++)
     {
         Result *= 10;
-        Result += (Token->String.Data[Index] - '0');
+        Result += (Token.String.Data[Index] - '0');
     }
 
     return (Result);

@@ -5,8 +5,9 @@ typedef ssize program_entry_point(void);
 
 local ssize CompileAndRun(string Code)
 {
-    token* FirstToken = Tokenize(Code);
-    node* RootNode = Parse(FirstToken);
+    EquipLexerCode(Code);
+
+    node* RootNode = Parse();
 
     usize AssemblySize = Generate(0, 0, RootNode);
     void* Assembly = Allocate(AssemblySize);
