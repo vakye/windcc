@@ -273,6 +273,19 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
             Exit(1);
         } break;
 
+        case NodeKind_Dereference:
+        {
+            Type = ObtainDereferenceType(Gen, Node->Left);
+
+            if (!Type->PointingTo)
+            {
+                Println(Str("ERROR: dereferencing a non-pointer"));
+                Exit(1);
+            }
+
+            Type = Type->PointingTo;
+        } break;
+
         case NodeKind_AddressOf:
         {
             node* Left = Node->Left;
@@ -294,6 +307,27 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
             }
 
             Type = &Symbol->TypeSpec;
+        } break;
+
+        case NodeKind_Identifier:
+        {
+            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            if (!Symbol)
+            {
+                Print(Str("ERROR: undeclared identifier '"));
+                Print(Node->Identifier);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            if (!Symbol->TypeSpec.PointingTo)
+            {
+                Println(Str("ERROR: dereferencing a non-pointer"));
+                Exit(1);
+            }
+
+            Type = Symbol->TypeSpec.PointingTo;
         } break;
     }
 

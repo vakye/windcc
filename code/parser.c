@@ -120,6 +120,13 @@ local node* AllocateBinaryNode(node_kind Kind, token* Token, node* Left, node* R
     return (Node);
 }
 
+local type_spec* AllocateTypeSpec(void)
+{
+    type_spec* TypeSpec = Allocate(sizeof(type_spec));
+    ZeroType(TypeSpec);
+    return (TypeSpec);
+}
+
 local node* ParseExpression(token** ParseAt);
 
 local node* ParsePrimary(token** ParseAt)
@@ -624,6 +631,20 @@ local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
 
     node* Node = AllocateNode(NodeKind_Declare, Token);
 
+    Node->TypeSpec = TypeSpec;
+
+    while (Token->Kind == '*')
+    {
+        *ParseAt = Token->Next;
+        Token = *ParseAt;
+
+        type_spec* PointingTo = AllocateTypeSpec();
+        *PointingTo = Node->TypeSpec;
+
+        Node->TypeSpec.Bytes = 8;
+        Node->TypeSpec.PointingTo = PointingTo;
+    }
+
     if (Token->Kind != TokenKind_Identifier)
     {
         Print(Str("ERROR: '"));
@@ -633,7 +654,6 @@ local node* ParseDeclaration(token** ParseAt, type_spec TypeSpec)
         Exit(1);
     }
 
-    Node->TypeSpec = TypeSpec;
     Node->Identifier = Token->String;
 
     // NOTE(vak): No need to advance past identifier since ParseExpression
