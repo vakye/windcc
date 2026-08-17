@@ -44,6 +44,9 @@ typedef enum
     NodeKind_PreIncrement,
     NodeKind_PreDecrement,
 
+    NodeKind_AddressOf,
+    NodeKind_Dereference,
+
     NodeKind_Assign,
     NodeKind_Declare,
     NodeKind_If,
@@ -52,11 +55,13 @@ typedef enum
     NodeKind_Continue,
 } node_kind;
 
-typedef struct
+typedef struct type_spec type_spec;
+struct type_spec
 {
     b32 Signed;
     usize Bytes;
-} type_spec;
+    type_spec* PointingTo;
+};
 
 typedef struct node node;
 struct node
@@ -223,6 +228,16 @@ local node* ParsePrefix(token** ParseAt)
     {
         *ParseAt = Token->Next;
         Node = AllocateUnaryNode(NodeKind_PreDecrement, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == '&')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_AddressOf, Token, ParsePrefix(ParseAt));
+    }
+    else if (Token->Kind == '*')
+    {
+        *ParseAt = Token->Next;
+        Node = AllocateUnaryNode(NodeKind_Dereference, Token, ParsePrefix(ParseAt));
     }
     else
     {

@@ -184,6 +184,8 @@ local void EndScope(gen_buffer* Gen, gen_scope Scope)
     }
 }
 
+local void GenerateNode(gen_buffer* Gen, node* Node);
+
 local void GenerateAddress(gen_buffer* Gen, node* Node)
 {
     if (!Node)
@@ -228,6 +230,76 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
     }
 }
 
+local void GenerateLoadForType(gen_buffer* Gen, type_spec* TypeSpec)
+{
+    if (TypeSpec->Signed)
+    {
+        switch (TypeSpec->Bytes)
+        {
+            default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+            case 1: Emit32(Gen, 0x08be0f48);    break; // NOTE(vak): 48 0f be 08   movsx rcx, byte [rax]
+            case 2: Emit32(Gen, 0x08bf0f48);    break; // NOTE(vak): 48 0f bf 08   movsx rcx, word [rax]
+            case 4: Emit24(Gen, 0x086348);      break; // NOTE(vak): 48 63 08      movsxd rcx, dword [rax]
+            case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
+        }
+    }
+    else
+    {
+        switch (TypeSpec->Bytes)
+        {
+            default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+            // NOTE(vak): Operations involving 32-bit registers in x64 automatically zeroes
+            // upper 32-bit part of register so there is using a 32-bit load is okay.
+
+            case 1: Emit32(Gen, 0x08b60f48);    break; // NOTE(vak): 48 0f b6 08   movzx rcx, byte [rax]
+            case 2: Emit32(Gen, 0x08b70f48);    break; // NOTE(vak): 48 0f b7 08   movzx rcx, word [rax]
+            case 4: Emit16(Gen, 0x088b);        break; // NOTE(vak): 8b 00         mov ecx, [rax]
+            case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
+        }
+    }
+}
+
+local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
+{
+    type_spec* Type = 0;
+
+    switch (Node->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: unimplemented node kind in ObtainDereferenceType"));
+            Exit(1);
+        } break;
+
+        case NodeKind_AddressOf:
+        {
+            node* Left = Node->Left;
+
+            if (Left->Kind != NodeKind_Identifier)
+            {
+                Println(Str("ERROR: invalid address-of operation"));
+                Exit(1);
+            }
+
+            gen_symbol* Symbol = LookupSymbol(Gen, Left->Identifier);
+            if (!Symbol)
+            {
+                Print(Str("ERROR: undeclared identifier '"));
+                Print(Node->Identifier);
+                Print(Str("'"));
+                PrintNewLine();
+                Exit(1);
+            }
+
+            Type = &Symbol->TypeSpec;
+        } break;
+    }
+
+    return (Type);
+}
+
 // NOTE(vak): Load value of node: RAX=MemoryAddress, RCX=LoadedValue
 local void GenerateLoad(gen_buffer* Gen, node* Node)
 {
@@ -237,6 +309,22 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
         {
             Println(Str("ERROR: unimplemented node kind in GenerateLoad"));
             Exit(1);
+        } break;
+
+        case NodeKind_Dereference:
+        {
+            type_spec* TypeSpec = ObtainDereferenceType(Gen, Node->Left);
+
+            if (!TypeSpec)
+            {
+                Println(Str("ERROR: invalid dereference"));
+                Exit(1);
+            }
+
+            Emit8(Gen, 0x51); // NOTE(vak): push rcx
+            GenerateNode(Gen, Node->Left);
+            Emit8(Gen, 0x59); // NOTE(vak): pop rcx
+            GenerateLoadForType(Gen, TypeSpec);
         } break;
 
         case NodeKind_Identifier:
@@ -251,36 +339,24 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
                 Exit(1);
             }
 
-            type_spec TypeSpec = Symbol->TypeSpec;
+            type_spec* TypeSpec = &Symbol->TypeSpec;
 
-            if (TypeSpec.Signed)
-            {
-                switch (TypeSpec.Bytes)
-                {
-                    default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
-
-                    case 1: Emit32(Gen, 0x08be0f48);    break; // NOTE(vak): 48 0f be 08   movsx rcx, byte [rax]
-                    case 2: Emit32(Gen, 0x08bf0f48);    break; // NOTE(vak): 48 0f bf 08   movsx rcx, word [rax]
-                    case 4: Emit24(Gen, 0x086348);      break; // NOTE(vak): 48 63 08      movsxd rcx, dword [rax]
-                    case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
-                }
-            }
-            else
-            {
-                switch (TypeSpec.Bytes)
-                {
-                    default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
-
-                    // NOTE(vak): Operations involving 32-bit registers in x64 automatically zeroes
-                    // upper 32-bit part of register so there is using a 32-bit load is okay.
-
-                    case 1: Emit32(Gen, 0x08b60f48);    break; // NOTE(vak): 48 0f b6 08   movzx rcx, byte [rax]
-                    case 2: Emit32(Gen, 0x08b70f48);    break; // NOTE(vak): 48 0f b7 08   movzx rcx, word [rax]
-                    case 4: Emit16(Gen, 0x088b);        break; // NOTE(vak): 8b 00         mov ecx, [rax]
-                    case 8: Emit24(Gen, 0x088b48);      break; // NOTE(vak): 48 8b 08      mov rcx, [rax]
-                }
-            }
+            GenerateAddress(Gen, Node);
+            GenerateLoadForType(Gen, TypeSpec);
         } break;
+    }
+}
+
+local void GenerateStoreForType(gen_buffer* Gen, type_spec* TypeSpec)
+{
+    switch (TypeSpec->Bytes)
+    {
+        default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
+
+        case 1: Emit16(Gen, 0x0888);    break; // NOTE(vak): 88 08      mov [rax], cl
+        case 2: Emit24(Gen, 0x088966);  break; // NOTE(vak): 66 89 08   mov [rax], cx
+        case 4: Emit16(Gen, 0x0889);    break; // NOTE(vak): 89 08      mov [rax], ecx
+        case 8: Emit24(Gen, 0x088948);  break; // NOTE(vak): 48 89 08   mov [rax], rcx
     }
 }
 
@@ -295,6 +371,22 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
             Exit(1);
         } break;
 
+        case NodeKind_Dereference:
+        {
+            type_spec* TypeSpec = ObtainDereferenceType(Gen, Node->Left);
+
+            if (!TypeSpec)
+            {
+                Println(Str("ERROR: invalid dereference"));
+                Exit(1);
+            }
+ 
+            Emit8(Gen, 0x51); // NOTE(vak): push rcx
+            GenerateNode(Gen, Node->Left);
+            Emit8(Gen, 0x59); // NOTE(vak): pop rcx
+            GenerateStoreForType(Gen, TypeSpec);
+        } break;
+
         case NodeKind_Identifier:
         {
             gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
@@ -307,17 +399,10 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
                 Exit(1);
             }
 
-            type_spec TypeSpec = Symbol->TypeSpec;
+            type_spec* TypeSpec = &Symbol->TypeSpec;
 
-            switch (TypeSpec.Bytes)
-            {
-                default: Println(Str("ERROR: invalid TypeSpec.Bytes")); Exit(1); break;
-
-                case 1: Emit16(Gen, 0x0888);    break; // NOTE(vak): 88 08      mov [rax], cl
-                case 2: Emit24(Gen, 0x088966);  break; // NOTE(vak): 66 89 08   mov [rax], cx
-                case 4: Emit16(Gen, 0x0889);    break; // NOTE(vak): 89 08      mov [rax], ecx
-                case 8: Emit24(Gen, 0x088948);  break; // NOTE(vak): 48 89 08   mov [rax], rcx
-            }
+            GenerateAddress(Gen, Node);
+            GenerateStoreForType(Gen, TypeSpec);
         } break;
     }
 }
@@ -361,7 +446,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_Identifier:
         {
-            GenerateAddress(Gen, Node);
             GenerateLoad(Gen, Node);
 
             // NOTE(vak):
@@ -572,7 +656,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PostIncrement:
         {
-            GenerateAddress(Gen, Node->Left);
             GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
@@ -589,7 +672,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PostDecrement:
         {
-            GenerateAddress(Gen, Node->Left);
             GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
@@ -606,7 +688,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PreIncrement:
         {
-            GenerateAddress(Gen, Node->Left);
             GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
@@ -622,7 +703,6 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PreDecrement:
         {
-            GenerateAddress(Gen, Node->Left);
             GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
@@ -636,12 +716,27 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             Emit24(Gen, 0xc18b48);
         } break;
 
+        case NodeKind_AddressOf:
+        {
+            GenerateAddress(Gen, Node->Left);
+        } break;
+
+        case NodeKind_Dereference:
+        {
+            GenerateLoad(Gen, Node);
+
+            // NOTE(vak):
+            // 48 8b c1     mov rax, rcx
+            Emit24(Gen, 0xc18b48);
+        } break;
+
         case NodeKind_Assign:
         {
             GenerateNode(Gen, Node->Right);
-            Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
-            GenerateAddress(Gen, Node->Left);
-            Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            // NOTE(vak):
+            // 48 8b c8     mov rcx, rax
+            Emit24(Gen, 0xc88b48);
 
             GenerateStore(Gen, Node->Left);
 
