@@ -177,6 +177,8 @@ local void Main(void)
         { 10,                       StaticStr("int A = 0; *(&A) = 10; *(&A);") },
         { 40,                       StaticStr("int A = 0; int* B = &A; *B = 40; *B;") },
         { 50,                       StaticStr("int A = 0; int* B = &A; int** C = &B; **C = 50; **C;") },
+        { 600,                      StaticStr("int A[5]; *(A + 2) = 20; *(A + 3) = 30; *(A + 2) * *(A + 3);") },
+        { 40,                       StaticStr("int A[10]; int* B = A; B++; *B = 20; ++B; --B; ++B; ++B; *B = 30; ++B; *B = 5; B++; B--; *B = 10; *(A + 1) + *(A + 3) - *(A + 4);") },
     };
 
     usize TestsPassed = 0;

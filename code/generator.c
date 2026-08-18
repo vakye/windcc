@@ -157,14 +157,44 @@ local gen_symbol* AddSymbol(gen_buffer* Gen, gen_symbol_kind SymbolKind, string 
         Gen->FirstFreeSymbol = Symbol->Next;
     }
 
-    Gen->StackSize += TypeSpec.Bytes;
-
     ZeroType(Symbol);
 
     Symbol->Kind = SymbolKind;
     Symbol->Name = Name;
-    Symbol->StackOffset = Gen->StackSize;
     Symbol->TypeSpec = TypeSpec;
+
+    if (SymbolKind == Gen_SymbolKind_Variable)
+    {
+        usize SizeToBeAllocated = 0;
+
+        if (TypeSpec.ArrayCount)
+        {
+            usize ElementCount = 1;
+            usize ElementSize = 0;
+
+            type_spec* Scan = &TypeSpec;
+            for (;;)
+            {
+                if (!Scan->ArrayCount)
+                {
+                    ElementSize = Scan->Bytes;
+                    break;
+                }
+                else
+                {
+                    ElementCount *= Scan->ArrayCount;
+                    Scan = Scan->PointingTo;
+                }
+            }
+
+            SizeToBeAllocated = ElementCount * ElementSize;
+        }
+        else
+            SizeToBeAllocated = TypeSpec.Bytes;
+
+        Gen->StackSize += SizeToBeAllocated;
+        Symbol->StackOffset = Gen->StackSize;
+    }
 
     if (!Gen->FirstSymbol)
     {
@@ -239,11 +269,16 @@ local void EndScope(gen_buffer* Gen, gen_scope Scope)
 //      Promotable:
 //          + true:  Valid if Left->Bytes >= Right->Bytes (promotable to equal to bigger size)
 //          + false: Both sides must match in terms of size
+//
+//      SizeDoesntMatter:
+//          + true:  Ignore any checks related to size
+//          + false: Enable checks related to size
 
 local b32 PerformTypeCheck(
     type_spec* Left, type_spec* Right,
     b32 EnforceSameSign,
-    b32 Promotable
+    b32 Promotable,
+    b32 SizeDoesntMatter
 )
 {
     if (!Left || !Right)
@@ -255,18 +290,26 @@ local b32 PerformTypeCheck(
     if (Left->PointingTo || Right->PointingTo)
     {
         // NOTE(vak): Pointers should be absolutely identical
-        return PerformTypeCheck(Left->PointingTo, Right->PointingTo, true, false);
+        return PerformTypeCheck(Left->PointingTo, Right->PointingTo, true, false, false);
     }
 
     b32 Result = true;
 
     if (EnforceSameSign)
-        Result &= (Left->Signed == Right->Signed);
+    {
+        Result &=
+            (Left->Signed == Right->Signed) ||
+            (Left->SignDoesntMatter) ||
+            (Right->SignDoesntMatter);
+    }
 
-    if (Promotable)
-        Result &= (Left->Bytes >= Right->Bytes);
-    else
-        Result &= (Left->Bytes == Right->Bytes);
+    if (!SizeDoesntMatter)
+    {
+        if (Promotable)
+            Result &= (Left->Bytes >= Right->Bytes);
+        else
+            Result &= (Left->Bytes == Right->Bytes);
+    }
 
     return (Result);
 }
@@ -359,79 +402,6 @@ local void GenerateLoadForType(gen_buffer* Gen, type_spec* TypeSpec)
     }
 }
 
-local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
-{
-    type_spec* Type = 0;
-
-    switch (Node->Kind)
-    {
-        default:
-        {
-            Println(Str("ERROR: unimplemented node kind in ObtainDereferenceType"));
-            Exit(1);
-        } break;
-
-        case NodeKind_Dereference:
-        {
-            Type = ObtainDereferenceType(Gen, Node->Left);
-
-            if (!Type->PointingTo)
-            {
-                Println(Str("ERROR: dereferencing a non-pointer"));
-                Exit(1);
-            }
-
-            Type = Type->PointingTo;
-        } break;
-
-        case NodeKind_AddressOf:
-        {
-            node* Left = Node->Left;
-
-            if (Left->Kind != NodeKind_Identifier)
-            {
-                Println(Str("ERROR: invalid address-of operation"));
-                Exit(1);
-            }
-
-            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Left->Identifier);
-            if (!Symbol)
-            {
-                Print(Str("ERROR: undeclared identifier '"));
-                Print(Node->Identifier);
-                Print(Str("'"));
-                PrintNewLine();
-                Exit(1);
-            }
-
-            Type = &Symbol->TypeSpec;
-        } break;
-
-        case NodeKind_Identifier:
-        {
-            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Node->Identifier);
-            if (!Symbol)
-            {
-                Print(Str("ERROR: undeclared identifier '"));
-                Print(Node->Identifier);
-                Print(Str("'"));
-                PrintNewLine();
-                Exit(1);
-            }
-
-            if (!Symbol->TypeSpec.PointingTo)
-            {
-                Println(Str("ERROR: dereferencing a non-pointer"));
-                Exit(1);
-            }
-
-            Type = Symbol->TypeSpec.PointingTo;
-        } break;
-    }
-
-    return (Type);
-}
-
 // NOTE(vak):
 // Resulting memory address is put into RAX.
 // Resulting loaded value is put into RCX.
@@ -449,20 +419,19 @@ local type_spec GenerateLoad(gen_buffer* Gen, node* Node)
 
         case NodeKind_Dereference:
         {
-            type_spec* TypeSpec = ObtainDereferenceType(Gen, Node->Left);
+            Emit8(Gen, 0x51); // NOTE(vak): push rcx
 
-            if (!TypeSpec)
+            type_spec TypeSpec = GenerateNode(Gen, Node->Left);
+            if (!TypeSpec.PointingTo)
             {
-                Println(Str("ERROR: invalid dereference"));
+                Println(Str("ERROR: trying to dereference a non-pointer"));
                 Exit(1);
             }
 
-            Emit8(Gen, 0x51); // NOTE(vak): push rcx
-            GenerateNode(Gen, Node->Left);
             Emit8(Gen, 0x59); // NOTE(vak): pop rcx
-            GenerateLoadForType(Gen, TypeSpec);
+            GenerateLoadForType(Gen, TypeSpec.PointingTo);
 
-            ResultType = *TypeSpec;
+            ResultType = *TypeSpec.PointingTo;
         } break;
 
         case NodeKind_Identifier:
@@ -480,7 +449,14 @@ local type_spec GenerateLoad(gen_buffer* Gen, node* Node)
             type_spec* TypeSpec = &Symbol->TypeSpec;
 
             GenerateAddress(Gen, Node);
-            GenerateLoadForType(Gen, TypeSpec);
+
+            // NOTE(vak): Arrays are treated as pointer addresses.
+            // Otherwise just load in the variable value.
+
+            if (TypeSpec->ArrayCount == 0)
+                GenerateLoadForType(Gen, TypeSpec);
+            else
+                Emit24(Gen, 0xc88b48); // NOTE(vak): 48 8b c8 mov rcx, rax
 
             ResultType = *TypeSpec;
         } break;
@@ -519,24 +495,19 @@ local void GenerateStore(gen_buffer* Gen, node* Node, type_spec StoreType)
 
         case NodeKind_Dereference:
         {
-            type_spec* TypeSpec = ObtainDereferenceType(Gen, Node->Left);
+            Emit8(Gen, 0x51); // NOTE(vak): push rcx
 
-            if (!TypeSpec)
-            {
-                Println(Str("ERROR: invalid dereference"));
-                Exit(1);
-            }
+            type_spec TypeSpec = GenerateNode(Gen, Node->Left);
 
-            if (!PerformTypeCheck(TypeSpec, &StoreType, false, true))
+            Emit8(Gen, 0x59); // NOTE(vak): pop rcx
+ 
+            if (!PerformTypeCheck(TypeSpec.PointingTo, &StoreType, false, true, false))
             {
                 Println(Str("ERROR: incompatible types"));
                 Exit(1);
             }
  
-            Emit8(Gen, 0x51); // NOTE(vak): push rcx
-            GenerateNode(Gen, Node->Left);
-            Emit8(Gen, 0x59); // NOTE(vak): pop rcx
-            GenerateStoreForType(Gen, TypeSpec);
+            GenerateStoreForType(Gen, TypeSpec.PointingTo);
         } break;
 
         case NodeKind_Identifier:
@@ -553,7 +524,7 @@ local void GenerateStore(gen_buffer* Gen, node* Node, type_spec StoreType)
 
             type_spec* TypeSpec = &Symbol->TypeSpec;
 
-            if (!PerformTypeCheck(TypeSpec, &StoreType, false, true))
+            if (!PerformTypeCheck(TypeSpec, &StoreType, false, true, false))
             {
                 Println(Str("ERROR: incompatible types"));
                 Exit(1);
@@ -621,21 +592,25 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
 
             if (Node->Integer <= U8Max)
             {
+                ResultType.SignDoesntMatter = true;
                 ResultType.Signed = true;
                 ResultType.Bytes = 1;
             }
             else if (Node->Integer <= U16Max)
             {
+                ResultType.SignDoesntMatter = true;
                 ResultType.Signed = true;
                 ResultType.Bytes = 2;
             }
             else if (Node->Integer <= U32Max)
             {
+                ResultType.SignDoesntMatter = true;
                 ResultType.Signed = true;
                 ResultType.Bytes = 4;
             }
             else if (Node->Integer <= S64Max)
             {
+                ResultType.SignDoesntMatter = true;
                 ResultType.Signed = true;
                 ResultType.Bytes = 8;
             }
@@ -717,21 +692,93 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
 
             Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
 
+            if (LeftType.PointingTo && RightType.PointingTo)
+            {
+                if (!PerformTypeCheck(&LeftType, &RightType, false, false, true))
+                {
+                    Println(Str("ERROR: incompatible types in expression"));
+                    Exit(1);
+                }
+            }
+
             ResultType = (type_spec)
             {
                 .Signed = LeftType.Signed || RightType.Signed,     // NOTE(vak): Inherit sign
                 .Bytes = Maximum(LeftType.Bytes, RightType.Bytes), // NOTE(vak): Promote
             };
 
+            b32 PointerArithmetic = (LeftType.PointingTo || RightType.PointingTo);
+
+            if (0) {}
+            else if (LeftType.PointingTo)  ResultType.PointingTo = LeftType.PointingTo;
+            else if (RightType.PointingTo) ResultType.PointingTo = RightType.PointingTo;
+
+            if (PointerArithmetic)
+            {
+                if ((Node->Kind != NodeKind_Add) && (Node->Kind != NodeKind_Sub))
+                {
+                    Println(Str("ERROR: invalid pointer arithmetic expression"));
+                    Exit(1);
+                }
+            }
+
             switch (Node->Kind)
             {
-                // NOTE(vak):
-                // 48 03 c1         add rax, rcx
-                case NodeKind_Add: Emit24(Gen, 0xc10348); break;
+                case NodeKind_Add:
+                {
+                    if (PointerArithmetic)
+                    {
+                        if (LeftType.PointingTo && RightType.PointingTo)
+                        {
+                        }
+                        else if (LeftType.PointingTo)
+                        {
+                            // NOTE(vak):
+                            // 48 69 c9 Imm32   imul rcx, rcx, LeftType.PointingTo->Bytes
+                            Emit24(Gen, 0xc96948);
+                            Emit32(Gen, LeftType.PointingTo->Bytes);
+                        }
+                        else if (RightType.PointingTo)
+                        {
+                            // NOTE(vak):
+                            // 48 69 c0 Imm32   imul rax, rax, RightType.PointingTo->Bytes
+                            Emit24(Gen, 0xc06948);
+                            Emit32(Gen, RightType.PointingTo->Bytes);
+                        }
+                    }
+
+                    // NOTE(vak):
+                    // 48 03 c1         add rax, rcx
+                    Emit24(Gen, 0xc10348); break;
+                } break;
 
                 // NOTE(vak):
                 // 48 2b c1         sub rax, rcx
-                case NodeKind_Sub: Emit24(Gen, 0xc12b48); break;
+                case NodeKind_Sub:
+                {
+                    if (PointerArithmetic)
+                    {
+                        if (LeftType.PointingTo && RightType.PointingTo)
+                        {
+                        }
+                        else if (LeftType.PointingTo)
+                        {
+                            // NOTE(vak):
+                            // 48 69 c9 Imm32   imul rcx, rcx, LeftType.PointingTo->Bytes
+                            Emit24(Gen, 0xc96948);
+                            Emit32(Gen, LeftType.PointingTo->Bytes);
+                        }
+                        else if (RightType.PointingTo)
+                        {
+                            // NOTE(vak):
+                            // 48 69 c0 Imm32   imul rax, rax, RightType.PointingTo->Bytes
+                            Emit24(Gen, 0xc06948);
+                            Emit32(Gen, RightType.PointingTo->Bytes);
+                        }
+                    }
+
+                    Emit24(Gen, 0xc12b48);
+                } break;
 
                 case NodeKind_Mul:
                 {
@@ -836,9 +883,9 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
 
             Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
 
-            if (LeftType.Signed != RightType.Signed)
+            if (!PerformTypeCheck(&LeftType, &RightType, true, false, true))
             {
-                Println(Str("ERROR: signed/unsigned mismatch in comparison"));
+                Println(Str("ERROR: incompatible types in comparison"));
                 Exit(1);
             }
 
@@ -953,10 +1000,20 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
         {
             ResultType = GenerateLoad(Gen, Node->Left);
 
-            // NOTE(vak):
-            // 51           push rcx
-            // 48 ff c1     inc rcx
-            Emit32(Gen, 0xc1ff4851);
+            Emit8(Gen, 0x51); // NOTE(vak): 51 push rcx
+            if (!ResultType.PointingTo)
+            {
+                // NOTE(vak):
+                // 48 ff c1     inc rcx
+                Emit24(Gen, 0xc1ff48);
+            }
+            else
+            {
+                // NOTE(vak):
+                // 48 81 c1 Imm32   add rcx, ResultType.PointingTo->Bytes)
+                Emit24(Gen, 0xc18148);
+                Emit32(Gen, ResultType.PointingTo->Bytes);
+            }
 
             GenerateStore(Gen, Node->Left, ResultType);
 
@@ -969,10 +1026,20 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
         {
             ResultType = GenerateLoad(Gen, Node->Left);
 
-            // NOTE(vak):
-            // 51           push rcx
-            // 48 ff c9     dec rcx
-            Emit32(Gen, 0xc9ff4851);
+            Emit8(Gen, 0x51); // NOTE(vak): 51 push rcx
+            if (!ResultType.PointingTo)
+            {
+                // NOTE(vak):
+                // 48 ff c9     dec rcx
+                Emit32(Gen, 0xc9ff4851);
+            }
+            else
+            {
+                // NOTE(vak):
+                // 48 81 e9 Imm32   sub rcx, ResultType.PointingTo->Bytes)
+                Emit24(Gen, 0xe98148);
+                Emit32(Gen, ResultType.PointingTo->Bytes);
+            }
 
             GenerateStore(Gen, Node->Left, ResultType);
 
@@ -985,9 +1052,19 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
         {
             ResultType = GenerateLoad(Gen, Node->Left);
 
-            // NOTE(vak):
-            // 48 ff c1     inc rcx
-            Emit24(Gen, 0xc1ff48);
+            if (!ResultType.PointingTo)
+            {
+                // NOTE(vak):
+                // 48 ff c1     inc rcx
+                Emit24(Gen, 0xc1ff48);
+            }
+            else
+            {
+                // NOTE(vak):
+                // 48 81 c1 Imm32   add rcx, ResultType.PointingTo->Bytes)
+                Emit24(Gen, 0xc18148);
+                Emit32(Gen, ResultType.PointingTo->Bytes);
+            }
 
             GenerateStore(Gen, Node->Left, ResultType);
 
@@ -1000,9 +1077,19 @@ local type_spec GenerateNode(gen_buffer* Gen, node* Node)
         {
             ResultType = GenerateLoad(Gen, Node->Left);
 
-            // NOTE(vak):
-            // 48 ff c9     dec rcx
-            Emit24(Gen, 0xc9ff48);
+            if (!ResultType.PointingTo)
+            {
+                // NOTE(vak):
+                // 48 ff c9     dec rcx
+                Emit32(Gen, 0xc9ff4851);
+            }
+            else
+            {
+                // NOTE(vak):
+                // 48 81 e9 Imm32   sub rcx, ResultType.PointingTo->Bytes)
+                Emit24(Gen, 0xe98148);
+                Emit32(Gen, ResultType.PointingTo->Bytes);
+            }
 
             GenerateStore(Gen, Node->Left, ResultType);
 
@@ -1256,7 +1343,7 @@ local void GenerateTopLevel(gen_buffer* Gen, node* Node)
             }
             else
             {
-                if (!PerformTypeCheck(Symbol->TypeSpec.ReturnType, TypeSpec.ReturnType, true, false))
+                if (!PerformTypeCheck(Symbol->TypeSpec.ReturnType, TypeSpec.ReturnType, true, false, false))
                 {
                     Println(Str("ERROR: function return type differs from previous declaration"));
                     Exit(1);

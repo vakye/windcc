@@ -65,10 +65,12 @@ typedef struct type_spec type_spec;
 struct type_spec
 {
     type_spec_kind Kind;
+    b32 SignDoesntMatter;
     b32 Signed;
     usize Bytes;
     type_spec* PointingTo;
     type_spec* ReturnType;
+    usize ArrayCount;
 };
 
 typedef struct node node;
@@ -621,6 +623,38 @@ local node* ParseDeclaration(type_spec TypeSpec)
 
     Node->Identifier = IdentifierToken.String;
 
+    while (NextIfMatchToken('['))
+    {
+        token Token = GetCurrentToken();
+
+        if (!MatchToken(TokenKind_Integer))
+        {
+            Println(Str("ERROR: expected array size to be specified"));
+            Exit(1);
+        }
+
+        type_spec* PointingTo = AllocateTypeSpec(TypeSpecKind_Normal);
+        *PointingTo = Node->TypeSpec;
+
+        Node->TypeSpec.Bytes = 8;
+        Node->TypeSpec.PointingTo = PointingTo;
+        Node->TypeSpec.ArrayCount = TokenToInteger(Token);
+
+        if (Node->TypeSpec.ArrayCount == 0)
+        {
+            Println(Str("ERROR: specified array size must be larger than 0"));
+            Exit(1);
+        }
+
+        NextToken();
+
+        if (!NextIfMatchToken(']'))
+        {
+            Println(Str("ERROR: missing matching ']'"));
+            Exit(1);
+        }
+    }
+
     token Token = GetCurrentToken();
 
     if (NextIfMatchToken('='))
@@ -635,9 +669,6 @@ local node* ParseDeclaration(type_spec TypeSpec)
             Println(Str("ERROR: expected ';' at end of statement"));
             Exit(1);
         }
-    }
-    else if (NextIfMatchToken(';'))
-    {
     }
     else if (NextIfMatchToken('('))
     {
@@ -665,6 +696,9 @@ local node* ParseDeclaration(type_spec TypeSpec)
             Println(Str("ERROR: syntax error"));
             Exit(1);
         }
+    }
+    else if (NextIfMatchToken(';'))
+    {
     }
     else
     {
