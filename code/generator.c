@@ -271,10 +271,12 @@ local b32 PerformTypeCheck(
     return (Result);
 }
 
-local void GenerateNode(gen_buffer* Gen, node* Node);
+local type_spec GenerateNode(gen_buffer* Gen, node* Node);
 
-local void GenerateAddress(gen_buffer* Gen, node* Node)
+local type_spec GenerateAddress(gen_buffer* Gen, node* Node)
 {
+    type_spec ResultType = {0};
+
     if (!Node)
     {
         Println(Str("ERROR: no node passed into GenerateAddress"));
@@ -313,8 +315,14 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
             // 48 8d 85 (Disp32) lea rax, [rbp - Symbol->StackOffset]
             Emit24(Gen, 0x858d48);
             Emit32(Gen, Displacement);
+
+            ResultType.Signed = false;
+            ResultType.Bytes = 8;
+            ResultType.PointingTo = &Symbol->TypeSpec;
         } break;
     }
+
+    return (ResultType);
 }
 
 // NOTE(vak):
@@ -427,8 +435,10 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
 // NOTE(vak):
 // Resulting memory address is put into RAX.
 // Resulting loaded value is put into RCX.
-local void GenerateLoad(gen_buffer* Gen, node* Node)
+local type_spec GenerateLoad(gen_buffer* Gen, node* Node)
 {
+    type_spec ResultType = {0};
+
     switch (Node->Kind)
     {
         default:
@@ -451,6 +461,8 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
             GenerateNode(Gen, Node->Left);
             Emit8(Gen, 0x59); // NOTE(vak): pop rcx
             GenerateLoadForType(Gen, TypeSpec);
+
+            ResultType = *TypeSpec;
         } break;
 
         case NodeKind_Identifier:
@@ -469,8 +481,12 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
 
             GenerateAddress(Gen, Node);
             GenerateLoadForType(Gen, TypeSpec);
+
+            ResultType = *TypeSpec;
         } break;
     }
+
+    return (ResultType);
 }
 
 // NOTE(vak):
@@ -491,7 +507,7 @@ local void GenerateStoreForType(gen_buffer* Gen, type_spec* TypeSpec)
 
 // NOTE(vak): Value to store is assumed to be in RCX.
 // Memory address will be generated in RAX.
-local void GenerateStore(gen_buffer* Gen, node* Node)
+local void GenerateStore(gen_buffer* Gen, node* Node, type_spec StoreType)
 {
     switch (Node->Kind)
     {
@@ -508,6 +524,12 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
             if (!TypeSpec)
             {
                 Println(Str("ERROR: invalid dereference"));
+                Exit(1);
+            }
+
+            if (!PerformTypeCheck(TypeSpec, &StoreType, false, true))
+            {
+                Println(Str("ERROR: incompatible types"));
                 Exit(1);
             }
  
@@ -531,6 +553,12 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
 
             type_spec* TypeSpec = &Symbol->TypeSpec;
 
+            if (!PerformTypeCheck(TypeSpec, &StoreType, false, true))
+            {
+                Println(Str("ERROR: incompatible types"));
+                Exit(1);
+            }
+
             GenerateAddress(Gen, Node);
             GenerateStoreForType(Gen, TypeSpec);
         } break;
@@ -553,10 +581,12 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
 //        with register allocation. This would also mean that we can move away from the
 //        current stack-machine style of evaluation.
 
-local void GenerateNode(gen_buffer* Gen, node* Node)
+local type_spec GenerateNode(gen_buffer* Gen, node* Node)
 {
+    type_spec ResultType = {0};
+
     if (!Node)
-        return;
+        return (ResultType);
 
     switch (Node->Kind)
     {
@@ -588,11 +618,37 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 b8 (Imm64)    mov rax, Imm64
             Emit16(Gen, 0xb848);
             Emit64(Gen, Node->Integer);
+
+            if (Node->Integer <= U8Max)
+            {
+                ResultType.Signed = true;
+                ResultType.Bytes = 1;
+            }
+            else if (Node->Integer <= U16Max)
+            {
+                ResultType.Signed = true;
+                ResultType.Bytes = 2;
+            }
+            else if (Node->Integer <= U32Max)
+            {
+                ResultType.Signed = true;
+                ResultType.Bytes = 4;
+            }
+            else if (Node->Integer <= S64Max)
+            {
+                ResultType.Signed = true;
+                ResultType.Bytes = 8;
+            }
+            else
+            {
+                ResultType.Signed = false;
+                ResultType.Bytes = 8;
+            }
         } break;
 
         case NodeKind_Identifier:
         {
-            GenerateLoad(Gen, Node);
+            ResultType = GenerateLoad(Gen, Node);
 
             // NOTE(vak):
             // 48 8b c1         mov rax, rcx
@@ -601,7 +657,13 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_Negate:
         {
-            GenerateNode(Gen, Node->Left);
+            ResultType = GenerateNode(Gen, Node->Left);
+
+            if (!ResultType.Signed)
+            {
+                Println(Str("ERROR: negating an unsigned value"));
+                Exit(1);
+            }
 
             // NOTE(vak):
             // 48 f7 d8         neg rax
@@ -610,7 +672,7 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_BitwiseNot:
         {
-            GenerateNode(Gen, Node->Left);
+            ResultType = GenerateNode(Gen, Node->Left);
 
             // NOTE(vak):
             // 48 f7 d0         not rax
@@ -627,6 +689,9 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 0f b6 c0  movzx rax, al
             Emit64(Gen, 0x0f48c0940fc08548);
             Emit16(Gen, 0xc0b6);
+
+            ResultType.Signed = false;
+            ResultType.Bytes = 1;
         } break;
 
         case NodeKind_Add:
@@ -644,10 +709,19 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // so we can evaluate in whichever order we want as long as the results
             // are consistent.
 
-            GenerateNode(Gen, Node->Right);
+            type_spec RightType = GenerateNode(Gen, Node->Right);
+
             Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
-            GenerateNode(Gen, Node->Left);
+
+            type_spec LeftType = GenerateNode(Gen, Node->Left);
+
             Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            ResultType = (type_spec)
+            {
+                .Signed = LeftType.Signed || RightType.Signed,     // NOTE(vak): Inherit sign
+                .Bytes = Maximum(LeftType.Bytes, RightType.Bytes), // NOTE(vak): Promote
+            };
 
             switch (Node->Kind)
             {
@@ -659,28 +733,79 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 // 48 2b c1         sub rax, rcx
                 case NodeKind_Sub: Emit24(Gen, 0xc12b48); break;
 
-                // NOTE(vak):
-                // 48 0f af c1      imul rax, rcx
-                case NodeKind_Mul: Emit32(Gen, 0xc1af0f48); break;
+                case NodeKind_Mul:
+                {
+                    if (ResultType.Signed)
+                    {
+                        // NOTE(vak):
+                        // 48 0f af c1      imul rax, rcx
+                        Emit32(Gen, 0xc1af0f48);
+                    }
+                    else
+                    {
+                        // NOTE(vak):
+                        // 48 99            cqo
+                        // 48 f7 e1         mul rcx
+                        Emit40(Gen, 0xe1f7489948);
+                    }
+                } break;
 
-                // NOTE(vak):
-                // 48 99            cqo
-                // 48 f7 f9         idiv rcx
-                case NodeKind_Div: Emit40(Gen, 0xf9f7489948); break;
+                case NodeKind_Div:
+                {
+                    if (ResultType.Signed)
+                    {
+                        // NOTE(vak):
+                        // 48 99            cqo
+                        // 48 f7 f9         idiv rcx
+                        Emit40(Gen, 0xf9f7489948);
+                    }
+                    else
+                    {
+                        // NOTE(vak):
+                        // 48 99            cqo
+                        // 48 f7 f1         div rcx
+                        Emit40(Gen, 0xf1f7489948);
+                    }
+                } break;
 
-                // NOTE(vak):
-                // 48 99            cqo
-                // 48 f7 f9         idiv rcx
-                // 48 8b c2         mov rax, rdx
-                case NodeKind_Mod: Emit64(Gen, 0xc28b48f9f7489948); break;
+                case NodeKind_Mod:
+                {
+                    if (ResultType.Signed)
+                    {
+                        // NOTE(vak):
+                        // 48 99            cqo
+                        // 48 f7 f9         idiv rcx
+                        Emit40(Gen, 0xf9f7489948);
+                    }
+                    else
+                    {
+                        // NOTE(vak):
+                        // 48 99            cqo
+                        // 48 f7 f1         div rcx
+                        Emit40(Gen, 0xf1f7489948);
+                    }
 
-                // NOTE(vak):
-                // 48 d3 e0         sal rax, cl
-                case NodeKind_ShiftLeft: Emit24(Gen, 0xe0d348); break;
+                    // NOTE(vak):
+                    // 48 8b c2         mov rax, rdx
+                    Emit24(Gen, 0xc28b48);
+                } break;
 
-                // NOTE(vak):
-                // 48 d3 f8         sar rax, cl
-                case NodeKind_ShiftRight: Emit24(Gen, 0xf8d348); break;
+                case NodeKind_ShiftLeft:
+                {
+                    // NOTE(vak): No need to differentiate between signed/unsigned
+                    // for shift left since SAL/SHL are mnemonics for the
+                    // same instruction.
+
+                    Emit24(Gen, 0xe0d348); // NOTE(vak): 48 d3 e0 sal rax, cl
+                } break;
+
+                case NodeKind_ShiftRight:
+                {
+                    if (ResultType.Signed)
+                        Emit24(Gen, 0xf8d348); // NOTE(vak): 48 d3 f8 sar rax, cl
+                    else
+                        Emit24(Gen, 0xe8d348); // NOTE(vak): 48 d3 e8 shr rax, cl
+                } break;
 
                 // NOTE(vak):
                 // 48 23 c1         and rax, rcx
@@ -703,10 +828,22 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
         case NodeKind_LessEqual:
         case NodeKind_GreaterEqual:
         {
-            GenerateNode(Gen, Node->Right);
+            type_spec RightType = GenerateNode(Gen, Node->Right);
+
             Emit8(Gen, 0x50); // NOTE(vak): 50 push rax
-            GenerateNode(Gen, Node->Left);
+
+            type_spec LeftType = GenerateNode(Gen, Node->Left);
+
             Emit8(Gen, 0x59); // NOTE(vak): 59 pop rcx
+
+            if (LeftType.Signed != RightType.Signed)
+            {
+                Println(Str("ERROR: signed/unsigned mismatch in comparison"));
+                Exit(1);
+            }
+
+            ResultType.Signed = false;
+            ResultType.Bytes = 1;
 
             // NOTE(vak):
             // 48 3b c1     cmp rax, rcx
@@ -749,6 +886,9 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 0f b6 c0  movzx rax, al
             Emit64(Gen, 0x0f48c0950fc08548);
             Emit16(Gen, 0xc0b6);
+
+            ResultType.Signed = false;
+            ResultType.Bytes = 1;
         } break;
 
         case NodeKind_LogicalOr:
@@ -773,6 +913,9 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             // 48 0f b6 c0  movzx rax, al
             Emit64(Gen, 0x0f48c0950fc08548);
             Emit16(Gen, 0xc0b6);
+
+            ResultType.Signed = false;
+            ResultType.Bytes = 1;
         } break;
 
         case NodeKind_Ternary:
@@ -788,7 +931,7 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             Emit40(Gen, 0x840fc08548);
             EmitRel32(Gen, SkipThen);
 
-            GenerateNode(Gen, Node->IfThen);
+            type_spec ThenType = GenerateNode(Gen, Node->IfThen);
 
             // NOTE(vak):
             // e9 Rel32     jmp SkipElse
@@ -796,20 +939,26 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             EmitRel32(Gen, SkipElse);
 
             PlaceLabel(Gen, SkipThen);
-            GenerateNode(Gen, Node->IfElse);
+            type_spec ElseType = GenerateNode(Gen, Node->IfElse);
             PlaceLabel(Gen, SkipElse);
+
+            ResultType = (type_spec)
+            {
+                .Signed = ThenType.Signed || ElseType.Signed,     // NOTE(vak): Inherit sign
+                .Bytes = Maximum(ThenType.Bytes, ElseType.Bytes), // NOTE(vak): Promote
+            };
         } break;
 
         case NodeKind_PostIncrement:
         {
-            GenerateLoad(Gen, Node->Left);
+            ResultType = GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
             // 51           push rcx
             // 48 ff c1     inc rcx
             Emit32(Gen, 0xc1ff4851);
 
-            GenerateStore(Gen, Node->Left);
+            GenerateStore(Gen, Node->Left, ResultType);
 
             // NOTE(vak):
             // 58           pop rax
@@ -818,14 +967,14 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PostDecrement:
         {
-            GenerateLoad(Gen, Node->Left);
+            ResultType = GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
             // 51           push rcx
             // 48 ff c9     dec rcx
             Emit32(Gen, 0xc9ff4851);
 
-            GenerateStore(Gen, Node->Left);
+            GenerateStore(Gen, Node->Left, ResultType);
 
             // NOTE(vak):
             // 58           pop rax
@@ -834,13 +983,13 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PreIncrement:
         {
-            GenerateLoad(Gen, Node->Left);
+            ResultType = GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
             // 48 ff c1     inc rcx
             Emit24(Gen, 0xc1ff48);
 
-            GenerateStore(Gen, Node->Left);
+            GenerateStore(Gen, Node->Left, ResultType);
 
             // NOTE(vak):
             // 48 8b c1     mov rax, rcx
@@ -849,13 +998,13 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_PreDecrement:
         {
-            GenerateLoad(Gen, Node->Left);
+            ResultType = GenerateLoad(Gen, Node->Left);
 
             // NOTE(vak):
             // 48 ff c9     dec rcx
             Emit24(Gen, 0xc9ff48);
 
-            GenerateStore(Gen, Node->Left);
+            GenerateStore(Gen, Node->Left, ResultType);
 
             // NOTE(vak):
             // 48 8b c1     mov rax, rcx
@@ -864,12 +1013,12 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_AddressOf:
         {
-            GenerateAddress(Gen, Node->Left);
+            ResultType = GenerateAddress(Gen, Node->Left);
         } break;
 
         case NodeKind_Dereference:
         {
-            GenerateLoad(Gen, Node);
+            ResultType = GenerateLoad(Gen, Node);
 
             // NOTE(vak):
             // 48 8b c1     mov rax, rcx
@@ -878,13 +1027,13 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
 
         case NodeKind_Assign:
         {
-            GenerateNode(Gen, Node->Right);
+            type_spec RightType = GenerateNode(Gen, Node->Right);
 
             // NOTE(vak):
             // 48 8b c8     mov rcx, rax
             Emit24(Gen, 0xc88b48);
 
-            GenerateStore(Gen, Node->Left);
+            GenerateStore(Gen, Node->Left, RightType);
 
             // NOTE(vak):
             // 48 8b c1     mov rax, rcx
@@ -1025,6 +1174,8 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             EmitRel32(Gen, Gen->ContinueLabel);
         } break;
     }
+
+    return (ResultType);
 }
 
 local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, node* FunctionBody)
