@@ -49,6 +49,9 @@ local usize RightPadOutput(usize Written, usize Padding)
 
 local void Main(void)
 {
+    // NOTE(vak): Simple test cases involving expressions and
+    // a few statements.
+
     test_case TestCases[] =
     {
         {  1337,                    StaticStr("1337;") },
@@ -178,12 +181,6 @@ local void Main(void)
         { 50,                       StaticStr("int A = 0; int* B = &A; int** C = &B; **C = 50; **C;") },
     };
 
-    test_case2 TestCases2[] =
-    {
-        { 10,       StaticStr("int main() { 10; }"), StaticStr("main") },
-        { 20,       StaticStr("int not_main() { 30; } unsigned long long my_entry_point() { 20; }"), StaticStr("my_entry_point") },
-    };
-
     usize TestsPassed = 0;
 
     PrintNewLine();
@@ -219,6 +216,14 @@ local void Main(void)
 
         PrintNewLine();
     }
+
+    // NOTE(vak): More complex test cases involving functions
+
+    test_case2 TestCases2[] =
+    {
+        { 10,       StaticStr("int main() { 10; }"), StaticStr("main") },
+        { 20,       StaticStr("int not_main() { 30; } unsigned long long my_entry_point() { 20; }"), StaticStr("my_entry_point") },
+    };
 
     for (usize TestIndex = 0; TestIndex < ArrayCount(TestCases2); TestIndex++)
     {

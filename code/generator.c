@@ -1,4 +1,34 @@
 
+// NOTE(vak): Assembly code generator
+
+//      + Follows right after the Parser and directly emits x64 assembly code
+//        from nodes.
+
+//      + Currently, it generates inefficient x64 assembly code which
+//        utilizes only three registers for evaluation: RAX, RCX, and RDX.
+
+//      + The assembly code it generates follow a stack-machine style
+//        of evaluation. Results are always stored in RAX, and if a
+//        node wishes to save a result then it must push RAX to the
+//        stack and pop it back into some other register (RCX, RDX, ...).
+//        Once an operation is finished, it is expected to move the result
+//        into RAX.
+
+//      + The code generator supports labels and REL32 offsets. REL32 offsets
+//        are reserved 32-bit offsets in the code that acts as a signed displacement
+//        a label. A label can be allocated, and its offset can be placed at any
+//        arbitrary point within the code. After code generation is finished,
+//        the code generator will go through all REL32 offsets and fill in the
+//        compute displacements.
+
+//      + Symbols are managed via a linked list that also acts as a stack.
+//        When a new symbol is added, it will be added at the end of the list.
+//        When entering a scope, the current last symbol is recorded as a
+//        restore point. Upon exiting the scope, everything from the restore
+//        point onwards will be "popped" off the symbol linked list and onto
+//        the free list, thereby removing it entirely.
+//        See BeginScope() and EndScope() for more details.
+
 #pragma once
 
 #define InvalidLabelOffset (USizeMax)
@@ -198,6 +228,49 @@ local void EndScope(gen_buffer* Gen, gen_scope Scope)
     }
 }
 
+// NOTE(vak): Perform type checks, returns true if valid,
+// else returns false.
+
+// NOTE(vak):
+//      EnforceSameSign:
+//          + true:  Both sides must have the same sign
+//          + false: Signs can differ
+//
+//      Promotable:
+//          + true:  Valid if Left->Bytes >= Right->Bytes (promotable to equal to bigger size)
+//          + false: Both sides must match in terms of size
+
+local b32 PerformTypeCheck(
+    type_spec* Left, type_spec* Right,
+    b32 EnforceSameSign,
+    b32 Promotable
+)
+{
+    if (!Left || !Right)
+        return (false);
+
+    if (Left->Kind != Right->Kind)
+        return (false);
+
+    if (Left->PointingTo || Right->PointingTo)
+    {
+        // NOTE(vak): Pointers should be absolutely identical
+        return PerformTypeCheck(Left->PointingTo, Right->PointingTo, true, false);
+    }
+
+    b32 Result = true;
+
+    if (EnforceSameSign)
+        Result &= (Left->Signed == Right->Signed);
+
+    if (Promotable)
+        Result &= (Left->Bytes >= Right->Bytes);
+    else
+        Result &= (Left->Bytes == Right->Bytes);
+
+    return (Result);
+}
+
 local void GenerateNode(gen_buffer* Gen, node* Node);
 
 local void GenerateAddress(gen_buffer* Gen, node* Node)
@@ -244,6 +317,9 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
     }
 }
 
+// NOTE(vak):
+// Memory address assumed to be in RAX.
+// Resulting loaded value is put into RCX.
 local void GenerateLoadForType(gen_buffer* Gen, type_spec* TypeSpec)
 {
     if (TypeSpec->Signed)
@@ -348,7 +424,9 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
     return (Type);
 }
 
-// NOTE(vak): Load value of node: RAX=MemoryAddress, RCX=LoadedValue
+// NOTE(vak):
+// Resulting memory address is put into RAX.
+// Resulting loaded value is put into RCX.
 local void GenerateLoad(gen_buffer* Gen, node* Node)
 {
     switch (Node->Kind)
@@ -395,6 +473,9 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
     }
 }
 
+// NOTE(vak):
+// Destination memory address is assumed to be in RAX.
+// Value to store is assumed to be in RCX.
 local void GenerateStoreForType(gen_buffer* Gen, type_spec* TypeSpec)
 {
     switch (TypeSpec->Bytes)
@@ -408,7 +489,8 @@ local void GenerateStoreForType(gen_buffer* Gen, type_spec* TypeSpec)
     }
 }
 
-// NOTE(vak): Store value of node: RAX=MemoryAddress, RCX=StoreValue
+// NOTE(vak): Value to store is assumed to be in RCX.
+// Memory address will be generated in RAX.
 local void GenerateStore(gen_buffer* Gen, node* Node)
 {
     switch (Node->Kind)
@@ -454,6 +536,22 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
         } break;
     }
 }
+
+// NOTE(vak):
+//      Result of code generated from node is always stored in RAX.
+//
+//      Currently, the generated code will perform evaluation like a stack-machine.
+//      This is horribly inefficient, but simple to implement.
+
+// TODO(vak):
+//      + Perform type checking. This would also make it easier to implement
+//        pointer arithmetic (we have no way to know if we're dealing with
+//        pointers inside of expressions at the moment.)
+//
+//      + Generate an intermediate representation (IR) from nodes, and use IR to
+//        generate assembly so we can perform instruction selection, scheduling along
+//        with register allocation. This would also mean that we can move away from the
+//        current stack-machine style of evaluation.
 
 local void GenerateNode(gen_buffer* Gen, node* Node)
 {
@@ -940,7 +1038,7 @@ local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, nod
         PlaceLabel(Gen, FunctionSymbol->FunctionCall);
     }
 
-    // NOTE(vak):
+    // NOTE(vak): Prologue
     // 55               push rbp
     // 48 8b ec         mov rbp, rsp
     // 48 81 ec Imm32   sub rsp, Gen.StackSize
@@ -957,7 +1055,7 @@ local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, nod
         GenerateNode(Gen, Statement);
     }
 
-    // NOTE(vak):
+    // NOTE(vak): Epilogue
     // 48 8b e5     mov rsp, rbp
     // 5d           pop rbp
     // c3           ret
@@ -977,25 +1075,6 @@ local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, nod
     }
 
     Gen->ReturnLabel = 0;
-}
-
-local b32 EqualTypeSpec(type_spec* A, type_spec* B)
-{
-    if (!A || !B)
-        return (false);
-
-    if (A->Kind != B->Kind)
-        return (false);
-
-    if (A->PointingTo || B->PointingTo)
-    {
-        return EqualTypeSpec(A->PointingTo, B->PointingTo);
-    }
-
-    b32 Result =
-        (A->Signed == B->Signed) && (A->Bytes == B->Signed);
-
-    return (Result);
 }
 
 local void GenerateTopLevel(gen_buffer* Gen, node* Node)
@@ -1026,7 +1105,7 @@ local void GenerateTopLevel(gen_buffer* Gen, node* Node)
             }
             else
             {
-                if (!EqualTypeSpec(Symbol->TypeSpec.ReturnType, TypeSpec.ReturnType))
+                if (!PerformTypeCheck(Symbol->TypeSpec.ReturnType, TypeSpec.ReturnType, true, false))
                 {
                     Println(Str("ERROR: function return type differs from previous declaration"));
                     Exit(1);
@@ -1049,9 +1128,26 @@ local void GenerateTopLevel(gen_buffer* Gen, node* Node)
 
 typedef struct
 {
-    usize EntryOffset;
-    usize CodeSize;
+    usize EntryOffset;  // NOTE(vak): Entry point byte offset into the buffer
+    usize CodeSize;     // NOTE(vak): Size of generated code in bytes.
 } gen_result;
+
+// NOTE(vak): Generates complete x64 assembly code from a parsed program.
+
+//      Buffer, BufferSize:
+//              + If both are set to 0, then code generator will not emit code, and instead
+//                return the CodeSize that will be generated.
+//              + Otherwise, code generator will emit code. If BufferSize is not large enough
+//                then code generator will stop emitting code at the end of the buffer.
+
+//      RootNode:
+//              + Root node that is obtained from the parser
+
+//      MainFunctionName:
+//              + if NilString: No main function specified, treat RootNode as if it were inside a function
+//                              and generate.
+//              + else:         Main function name is specified, so look for functions and generate them.
+//                              After generation, look for the main function and set the entry point offset.
 
 local gen_result Generate(void* Buffer, usize BufferSize, node* RootNode, string MainFunctionName)
 {
