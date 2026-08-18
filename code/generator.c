@@ -16,12 +16,20 @@ struct gen_rel32
     gen_rel32* Next;
 };
 
+typedef enum
+{
+    Gen_SymbolKind_Variable = 0,
+    Gen_SymbolKind_Function,
+} gen_symbol_kind;
+
 typedef struct gen_symbol gen_symbol;
 struct gen_symbol
 {
+    gen_symbol_kind Kind;
     string Name;
-    usize StackOffset;
     type_spec TypeSpec;
+    usize StackOffset;
+    gen_label* FunctionCall;
     gen_symbol* Next;
 };
 
@@ -46,6 +54,7 @@ typedef struct
 
     gen_label* BreakLabel;
     gen_label* ContinueLabel;
+    gen_label* ReturnLabel;
 } gen_buffer;
 
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
@@ -105,7 +114,7 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
     }
 }
 
-local gen_symbol* AddSymbol(gen_buffer* Gen, string Name, type_spec TypeSpec)
+local gen_symbol* AddSymbol(gen_buffer* Gen, gen_symbol_kind SymbolKind, string Name, type_spec TypeSpec)
 {
     gen_symbol* Symbol = Gen->FirstFreeSymbol;
 
@@ -121,6 +130,8 @@ local gen_symbol* AddSymbol(gen_buffer* Gen, string Name, type_spec TypeSpec)
     Gen->StackSize += TypeSpec.Bytes;
 
     ZeroType(Symbol);
+
+    Symbol->Kind = SymbolKind;
     Symbol->Name = Name;
     Symbol->StackOffset = Gen->StackSize;
     Symbol->TypeSpec = TypeSpec;
@@ -139,7 +150,7 @@ local gen_symbol* AddSymbol(gen_buffer* Gen, string Name, type_spec TypeSpec)
     return (Symbol);
 }
 
-local gen_symbol* LookupSymbol(gen_buffer* Gen, string Name)
+local gen_symbol* LookupSymbol(gen_buffer* Gen, gen_symbol_kind SymbolKind, string Name)
 {
     gen_symbol* Result = 0;
 
@@ -149,6 +160,9 @@ local gen_symbol* LookupSymbol(gen_buffer* Gen, string Name)
         Symbol = Symbol->Next
     )
     {
+        if (Symbol->Kind != SymbolKind)
+            continue;
+
         if (StringEqual(Symbol->Name, Name))
         {
             Result = Symbol;
@@ -204,7 +218,7 @@ local void GenerateAddress(gen_buffer* Gen, node* Node)
 
         case NodeKind_Identifier:
         {
-            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Node->Identifier);
             if (!Symbol)
             {
                 Print(Str("ERROR: undeclared identifier '"));
@@ -296,7 +310,7 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
                 Exit(1);
             }
 
-            gen_symbol* Symbol = LookupSymbol(Gen, Left->Identifier);
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Left->Identifier);
             if (!Symbol)
             {
                 Print(Str("ERROR: undeclared identifier '"));
@@ -311,7 +325,7 @@ local type_spec* ObtainDereferenceType(gen_buffer* Gen, node* Node)
 
         case NodeKind_Identifier:
         {
-            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Node->Identifier);
             if (!Symbol)
             {
                 Print(Str("ERROR: undeclared identifier '"));
@@ -363,7 +377,7 @@ local void GenerateLoad(gen_buffer* Gen, node* Node)
 
         case NodeKind_Identifier:
         {
-            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Node->Identifier);
             if (!Symbol)
             {
                 Print(Str("ERROR: undeclared identifier '"));
@@ -423,7 +437,7 @@ local void GenerateStore(gen_buffer* Gen, node* Node)
 
         case NodeKind_Identifier:
         {
-            gen_symbol* Symbol = LookupSymbol(Gen, Node->Identifier);
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Node->Identifier);
             if (!Symbol)
             {
                 Print(Str("ERROR: undeclared identifier '"));
@@ -784,7 +798,13 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
             type_spec TypeSpec = Node->TypeSpec;
             string Name = Node->Identifier;
 
-            gen_symbol* Symbol = LookupSymbol(Gen, Name);
+            if (TypeSpec.Kind == TypeSpecKind_Function)
+            {
+                Println(Str("ERROR: function declaration inside function body is not allowed"));
+                Exit(1);
+            }
+
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Variable, Name);
             if (Symbol)
             {
                 Print(Str("ERROR: redeclaration of identifier '"));
@@ -794,7 +814,7 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
                 Exit(1);
             }
 
-            AddSymbol(Gen, Name, TypeSpec);
+            AddSymbol(Gen, Gen_SymbolKind_Variable, Name, TypeSpec);
 
             GenerateNode(Gen, Node->Initializer);
         } break;
@@ -909,7 +929,131 @@ local void GenerateNode(gen_buffer* Gen, node* Node)
     }
 }
 
-local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
+local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, node* FunctionBody)
+{
+    Gen->ReturnLabel = AllocateLabel();
+    Gen->StackSize = 0;
+
+    if (FunctionSymbol)
+    {
+        FunctionSymbol->FunctionCall = AllocateLabel();
+        PlaceLabel(Gen, FunctionSymbol->FunctionCall);
+    }
+
+    // NOTE(vak):
+    // 55               push rbp
+    // 48 8b ec         mov rbp, rsp
+    // 48 81 ec Imm32   sub rsp, Gen.StackSize
+    Emit56(Gen, 0xec8148ec8b4855);
+
+    s32* WriteStackSize = (s32*)(Gen->Base + Gen->Used);
+    Emit32(Gen, 0x00000000);
+
+    for (
+        node* Statement = FunctionBody;
+        Statement;
+        Statement = Statement->Next)
+    {
+        GenerateNode(Gen, Statement);
+    }
+
+    // NOTE(vak):
+    // 48 8b e5     mov rsp, rbp
+    // 5d           pop rbp
+    // c3           ret
+    Emit40(Gen, 0xc35de58b48);
+
+    // NOTE(vak): Write in stack size
+
+    if (Gen->Size)
+    {
+        if (Gen->StackSize > S32Max)
+        {
+            Println(Str("ERROR: stack size exceeds 32-bit signed integer max"));
+            Exit(1);
+        }
+
+        *WriteStackSize = Gen->StackSize;
+    }
+
+    Gen->ReturnLabel = 0;
+}
+
+local b32 EqualTypeSpec(type_spec* A, type_spec* B)
+{
+    if (!A || !B)
+        return (false);
+
+    if (A->Kind != B->Kind)
+        return (false);
+
+    if (A->PointingTo || B->PointingTo)
+    {
+        return EqualTypeSpec(A->PointingTo, B->PointingTo);
+    }
+
+    b32 Result =
+        (A->Signed == B->Signed) && (A->Bytes == B->Signed);
+
+    return (Result);
+}
+
+local void GenerateTopLevel(gen_buffer* Gen, node* Node)
+{
+    switch (Node->Kind)
+    {
+        default:
+        {
+            Println(Str("ERROR: invalid statement that is outside of a function"));
+            Exit(1);
+        } break;
+
+        case NodeKind_Declare:
+        {
+            type_spec TypeSpec = Node->TypeSpec;
+            string Name = Node->Identifier;
+
+            if (TypeSpec.Kind == TypeSpecKind_Normal)
+            {
+                Println(Str("ERROR: variable declaration outside function body is not implemented yet"));
+                Exit(1);
+            }
+
+            gen_symbol* Symbol = LookupSymbol(Gen, Gen_SymbolKind_Function, Name);
+            if (!Symbol)
+            {
+                Symbol = AddSymbol(Gen, Gen_SymbolKind_Function, Name, TypeSpec);
+            }
+            else
+            {
+                if (!EqualTypeSpec(Symbol->TypeSpec.ReturnType, TypeSpec.ReturnType))
+                {
+                    Println(Str("ERROR: function return type differs from previous declaration"));
+                    Exit(1);
+                }
+            }
+
+            if (Node->FunctionBody)
+            {
+                if (Symbol->FunctionCall)
+                {
+                    Println(Str("ERROR: redefinition of function body"));
+                    Exit(1);
+                }
+
+                GenerateFunctionBody(Gen, Symbol, Node->FunctionBody);
+            }
+        } break;
+    }
+}
+
+typedef struct
+{
+    usize EntryOffset;
+    usize CodeSize;
+} gen_result;
+
+local gen_result Generate(void* Buffer, usize BufferSize, node* RootNode, string MainFunctionName)
 {
     gen_buffer Gen =
     {
@@ -917,42 +1061,50 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
         .Size = BufferSize,
     };
 
-    // NOTE(vak):
-    // 55               push rbp
-    // 48 8b ec         mov rbp, rsp
-    // 48 81 ec Imm32   sub rsp, Gen.StackSize
-    Emit56(&Gen, 0xec8148ec8b4855);
+    gen_result Result = {0};
 
-    s32* WriteStackSize = (s32*)(Gen.Base + Gen.Used);
-    Emit32(&Gen, 0x00000000);
-
-    for (
-        node* Statement = RootNode;
-        Statement;
-        Statement = Statement->Next
-    )
+    if (MainFunctionName.Size)
     {
-        GenerateNode(&Gen, Statement);
-    }
+        // NOTE(vak): Main function specified, so generate functions
 
-    // NOTE(vak):
-    // 48 8b e5     mov rsp, rbp
-    // 5d           pop rbp
-    // c3           ret
-    Emit40(&Gen, 0xc35de58b48);
-
-    // NOTE(vak): Write in stack size
-
-    if (Gen.Size)
-    {
-        if (Gen.StackSize > S32Max)
+        for (
+            node* Statement = RootNode;
+            Statement;
+            Statement = Statement->Next
+        )
         {
-            Println(Str("ERROR: stack size exceeds 32-bit signed integer max"));
+            GenerateTopLevel(&Gen, Statement);
+        }
+
+        gen_symbol* MainFunctionSymbol = LookupSymbol(&Gen, Gen_SymbolKind_Function, MainFunctionName);
+        if (!MainFunctionSymbol)
+        {
+            Print(Str("ERROR: cannot find entry point '"));
+            Print(MainFunctionName);
+            Print(Str("'"));
+            PrintNewLine();
             Exit(1);
         }
 
-        *WriteStackSize = Gen.StackSize;
+        if (!MainFunctionSymbol->FunctionCall)
+        {
+            Println(Str("ERROR: entry point is declared but not defined"));
+            Exit(1);
+        }
+
+        Result.EntryOffset = MainFunctionSymbol->FunctionCall->Offset;
     }
+    else
+    {
+        // NOTE(vak): No main function specified, treat code as if it were
+        // inside a function and generate. Entry offset is always placed at
+        // the start of the buffer (EntryOffset = 0), so there is no need to
+        // set it.
+
+        GenerateFunctionBody(&Gen, 0, RootNode);
+    }
+
+    Result.CodeSize = Gen.Used;
 
     // NOTE(vak): Fill in all rel32 displacements
 
@@ -985,6 +1137,6 @@ local usize Generate(void* Buffer, usize BufferSize, node* RootNode)
         }
     }
 
-    return (Gen.Used);
+    return (Result);
 }
 

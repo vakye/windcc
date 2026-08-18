@@ -3,23 +3,25 @@
 
 typedef ssize program_entry_point(void);
 
-local ssize CompileAndRun(string Code)
+local ssize CompileAndRun(string Code, string MainFunction)
 {
     EquipLexerCode(Code);
 
     node* RootNode = Parse();
 
-    usize AssemblySize = Generate(0, 0, RootNode);
-    void* Assembly = Allocate(AssemblySize);
+    gen_result GenResult = Generate(0, 0, RootNode, MainFunction);
+    void* Assembly = Allocate(GenResult.CodeSize);
 
-    Generate(Assembly, AssemblySize, RootNode);
+    Generate(Assembly, GenResult.CodeSize, RootNode, MainFunction);
+
+    void* MappedProgram = MapExecutableMemory(Assembly, GenResult.CodeSize);
 
     program_entry_point* ProgramEntry = (program_entry_point*)
-        MapExecutableMemory(Assembly, AssemblySize);
+        ((u8*)MappedProgram + GenResult.EntryOffset);
 
     ssize ProgramResult = ProgramEntry();
 
-    UnmapExecutableMemory((void*)ProgramEntry, AssemblySize);
+    UnmapExecutableMemory((void*)MappedProgram, GenResult.CodeSize);
 
     return (ProgramResult);
 }
@@ -29,6 +31,13 @@ typedef struct
     ssize Expected;
     string Code;
 } test_case;
+
+typedef struct
+{
+    ssize Expected;
+    string Code;
+    string MainFunction;
+} test_case2;
 
 local usize RightPadOutput(usize Written, usize Padding)
 {
@@ -169,6 +178,12 @@ local void Main(void)
         { 50,                       StaticStr("int A = 0; int* B = &A; int** C = &B; **C = 50; **C;") },
     };
 
+    test_case2 TestCases2[] =
+    {
+        { 10,       StaticStr("int main() { 10; }"), StaticStr("main") },
+        { 20,       StaticStr("int not_main() { 30; } unsigned long long my_entry_point() { 20; }"), StaticStr("my_entry_point") },
+    };
+
     usize TestsPassed = 0;
 
     PrintNewLine();
@@ -181,7 +196,39 @@ local void Main(void)
         RightPadOutput(PrintUSize(TestIndex), 3);
         Print(Str("]: "));
 
-        ssize RunResult = CompileAndRun(TestCase->Code);
+        ssize RunResult = CompileAndRun(TestCase->Code, NilString);
+        b32 Passed = (RunResult == TestCase->Expected);
+
+        TestsPassed += Passed;
+
+        usize Padding = 26;
+
+        Print(Passed ? Str("\033[32m") : Str("\033[31m"));
+        RightPadOutput(Print(Passed ? Str("PASSED") : Str("FAILED")), 12);
+        Print(Str("\033[0m"));
+
+        Print(Str("RunResult = "));
+        RightPadOutput(PrintSSize(RunResult), Padding);
+
+        Print(Str("Expected = "));
+        RightPadOutput(PrintSSize(TestCase->Expected), Padding);
+
+        Print(Str("Code = '"));
+        Print(TestCase->Code);
+        Print(Str("'"));
+
+        PrintNewLine();
+    }
+
+    for (usize TestIndex = 0; TestIndex < ArrayCount(TestCases2); TestIndex++)
+    {
+        test_case2* TestCase = TestCases2 + TestIndex;
+
+        Print(Str("TestCases2["));
+        RightPadOutput(PrintUSize(TestIndex), 2);
+        Print(Str("]: "));
+
+        ssize RunResult = CompileAndRun(TestCase->Code, TestCase->MainFunction);
         b32 Passed = (RunResult == TestCase->Expected);
 
         TestsPassed += Passed;
@@ -209,7 +256,7 @@ local void Main(void)
     Print(Str("Tests passed: "));
     PrintUSize(TestsPassed);
     Print(Str("/"));
-    PrintUSize(ArrayCount(TestCases));
+    PrintUSize(ArrayCount(TestCases) + ArrayCount(TestCases2));
     PrintNewLine();
 
     PrintNewLine();

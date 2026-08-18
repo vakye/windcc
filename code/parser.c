@@ -55,12 +55,20 @@ typedef enum
     NodeKind_Continue,
 } node_kind;
 
+typedef enum
+{
+    TypeSpecKind_Normal = 0,
+    TypeSpecKind_Function,
+} type_spec_kind;
+
 typedef struct type_spec type_spec;
 struct type_spec
 {
+    type_spec_kind Kind;
     b32 Signed;
     usize Bytes;
     type_spec* PointingTo;
+    type_spec* ReturnType;
 };
 
 typedef struct node node;
@@ -75,6 +83,7 @@ struct node
     type_spec TypeSpec;
     string Identifier;
     node* Initializer;
+    node* FunctionBody;
 
     node* Left;
     node* Right;
@@ -120,10 +129,13 @@ local node* AllocateBinaryNode(node_kind Kind, token Token, node* Left, node* Ri
     return (Node);
 }
 
-local type_spec* AllocateTypeSpec(void)
+local type_spec* AllocateTypeSpec(type_spec_kind Kind)
 {
     type_spec* TypeSpec = Allocate(sizeof(type_spec));
+
     ZeroType(TypeSpec);
+    TypeSpec->Kind = Kind;
+
     return (TypeSpec);
 }
 
@@ -578,6 +590,9 @@ local node* ParseExpression(void)
     return (Node);
 }
 
+local node* ParseStatement(void);
+local node* ParseBlock(void);
+
 local node* ParseDeclaration(type_spec TypeSpec)
 {
     node* Node = AllocateNode(NodeKind_Declare, GetCurrentToken());
@@ -586,30 +601,76 @@ local node* ParseDeclaration(type_spec TypeSpec)
 
     while (NextIfMatchToken('*'))
     {
-        type_spec* PointingTo = AllocateTypeSpec();
+        type_spec* PointingTo = AllocateTypeSpec(TypeSpecKind_Normal);
         *PointingTo = Node->TypeSpec;
 
         Node->TypeSpec.Bytes = 8;
         Node->TypeSpec.PointingTo = PointingTo;
     }
 
-    token Token = GetCurrentToken();
+    token IdentifierToken = GetCurrentToken();
 
-    if (!MatchToken(TokenKind_Identifier))
+    if (!NextIfMatchToken(TokenKind_Identifier))
     {
         Print(Str("ERROR: '"));
-        Print(Token.String);
+        Print(IdentifierToken.String);
         Print(Str("' is not a valid variable name"));
         PrintNewLine();
         Exit(1);
     }
 
-    Node->Identifier = Token.String;
+    Node->Identifier = IdentifierToken.String;
 
-    // NOTE(vak): No need to advance past identifier since ParseExpression
-    // can use it to generate an assignment node.
+    token Token = GetCurrentToken();
 
-    Node->Initializer = ParseExpression();
+    if (NextIfMatchToken('='))
+    {
+        node* IdentifierNode = AllocateNode(NodeKind_Identifier, IdentifierToken);
+        IdentifierNode->Identifier = Node->Identifier;
+
+        Node->Initializer = AllocateBinaryNode(NodeKind_Assign, Token, IdentifierNode, ParseExpression());
+
+        if (!NextIfMatchToken(';'))
+        {
+            Println(Str("ERROR: expected ';' at end of statement"));
+            Exit(1);
+        }
+    }
+    else if (NextIfMatchToken(';'))
+    {
+    }
+    else if (NextIfMatchToken('('))
+    {
+        type_spec* ReturnType = AllocateTypeSpec(TypeSpecKind_Normal);
+        *ReturnType = Node->TypeSpec;
+
+        Node->TypeSpec.Kind = TypeSpecKind_Function;
+        Node->TypeSpec.ReturnType = ReturnType;
+
+        if (!NextIfMatchToken(')'))
+        {
+            Println(Str("ERROR: expected matching ')'"));
+            Exit(1);
+        }
+
+        if (NextIfMatchToken(';'))
+        {
+        }
+        else if (MatchToken('{'))
+        {
+            Node->FunctionBody = ParseBlock();
+        }
+        else
+        {
+            Println(Str("ERROR: syntax error"));
+            Exit(1);
+        }
+    }
+    else
+    {
+        Println(Str("ERROR: syntax error"));
+        Exit(1);
+    }
 
     return (Node);
 }
@@ -699,8 +760,6 @@ local type_spec ParseDeclarationSpecifiers(void)
     return (TypeSpec);
 }
 
-local node* ParseStatement(void);
-
 local node* ParseBlock(void)
 {
     token Token = GetCurrentToken();
@@ -759,11 +818,6 @@ local node* ParseStatement(void)
     {
         Node = ParseDeclaration(TypeSpec);
 
-        if (!NextIfMatchToken(';'))
-        {
-            Println(Str("ERROR: expected ';' at end of statement"));
-            Exit(1);
-        }
     }
     else if (NextIfMatchToken(TokenKind_If))
     {
@@ -802,12 +856,14 @@ local node* ParseStatement(void)
         if (TypeSpec.Bytes)
             Node->ForInit = ParseDeclaration(TypeSpec);
         else
+        {
             Node->ForInit = ParseExpression();
 
-        if (!NextIfMatchToken(';'))
-        {
-            Println(Str("ERROR: expected ';' at end of statement"));
-            Exit(1);
+            if (!NextIfMatchToken(';'))
+            {
+                Println(Str("ERROR: expected ';' after for loop initializer"));
+                Exit(1);
+            }
         }
 
         // NOTE(vak): For loop condition
@@ -816,7 +872,7 @@ local node* ParseStatement(void)
 
         if (!NextIfMatchToken(';'))
         {
-            Println(Str("ERROR: expected ';' at end of statement"));
+            Println(Str("ERROR: expected ';' after for loop conditional"));
             Exit(1);
         }
 

@@ -130,6 +130,8 @@ typedef struct
 #define Str(Literal) (string){Literal, sizeof(Literal) - 1}
 #define StrData(Data, Size) (string){Data, Size}
 
+#define NilString (string){0}
+
 local string StringView(string String, usize From, usize Size)
 {
     AlwaysAssert(From + Size <= String.Size);
