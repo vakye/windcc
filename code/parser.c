@@ -61,6 +61,8 @@
 #define AllStatementNodeKinds(X) \
     X(If) \
     X(For) \
+    X(While) \
+    X(DoWhile) \
     X(Break) \
     X(Continue) \
     X(Return)
@@ -142,6 +144,18 @@ struct node
             node_id PostIteration;
             node_id Body;
         } For;
+
+        struct
+        {
+            node_id Condition;
+            node_id Body;
+        } While;
+
+        struct
+        {
+            node_id Condition;
+            node_id Body;
+        } DoWhile;
 
         struct
         {
@@ -268,6 +282,27 @@ local node_id PushForNode(
     return (NodeID);
 }
 
+local node_id PushWhileNode(token Token, node_id Condition, node_id Body)
+{
+    node_id NodeID = PushNode(NodeKind_While, Token);
+
+    Nodes[NodeID].While.Condition   = Condition;
+    Nodes[NodeID].While.Body        = Body;
+
+    return (NodeID);
+}
+
+local node_id PushDoWhileNode(token Token, node_id Condition, node_id Body)
+{
+    node_id NodeID = PushNode(NodeKind_DoWhile, Token);
+
+    Nodes[NodeID].DoWhile.Condition = Condition;
+    Nodes[NodeID].DoWhile.Body      = Body;
+
+    return (NodeID);
+}
+
+
 local node_id PushBlockNode(
     token Token,
     node_list Statements
@@ -379,7 +414,7 @@ typedef struct
     parse_op_info       Info;
 } parse_op;
 
-persist parse_op HeadParseOps[] =
+local parse_op HeadParseOps[] =
 {
     ['+']                       = { NodeKind_Ignore,        ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
     ['-']                       = { NodeKind_Negate,        ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
@@ -391,7 +426,7 @@ persist parse_op HeadParseOps[] =
     [TokenKind_DoubleMinus]     = { NodeKind_PreDecrement,  ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
 };
 
-persist parse_op TailParseOps[] =
+local parse_op TailParseOps[] =
 {
     ['+']                               = { NodeKind_Add,                   ParseOpInfo(Precedence_Sum,        Associativity_LeftToRight) },
     ['-']                               = { NodeKind_Sub,                   ParseOpInfo(Precedence_Sum,        Associativity_LeftToRight) },
@@ -434,6 +469,9 @@ local node_id ParseExpressionMain(precedence MinPrecedence);
 
 #define ParseExpression() ParseExpressionMain(Precedence_Highest)
 
+// NOTE(vak): Very useful reference for implementing a Pratt parser
+// https://dawoodjee.com/blog/pratt-parsing/#
+
 local node_id ParseExpressionHead(void)
 {
     node_id Result = NilNodeID;
@@ -454,29 +492,26 @@ local node_id ParseExpressionHead(void)
         else
             Result = Operand;
     }
+    else if (NextIfMatchToken(TokenKind_Integer))
+    {
+        Result = PushIntegerNode(Token);
+    }
+    else if (NextIfMatchToken(TokenKind_Identifier))
+    {
+        Result = PushIdentifierNode(Token);
+    }
+    else if (NextIfMatchToken('('))
+    {
+        Result = ParseExpression();
+        ParserExpectAndSkip(')', Str("expected matching ')' in expression"));
+    }
+    else if (MatchToken(';'))
+    {
+    }
     else
-    { 
-        if (NextIfMatchToken(TokenKind_Integer))
-        {
-            Result = PushIntegerNode(Token);
-        }
-        else if (NextIfMatchToken(TokenKind_Identifier))
-        {
-            Result = PushIdentifierNode(Token);
-        }
-        else if (NextIfMatchToken('('))
-        {
-            Result = ParseExpression();
-            ParserExpectAndSkip(')', Str("expected matching ')' in expression"));
-        }
-        else if (MatchToken(';'))
-        {
-        }
-        else
-        {
-            Println(Str("ERROR: syntax error"));
-            Exit(1);
-        }
+    {
+        Println(Str("ERROR: syntax error"));
+        Exit(1);
     }
 
     return (Result);
@@ -613,37 +648,26 @@ local node_id ParseStatement(void)
     {
         ParserExpectAndSkip('(', Str("expected '(' after 'while'"));
 
-        node_id Initializer     = NilNodeID;
-        node_id Condition       = NilNodeID;
-        node_id PostIteration   = NilNodeID;
-        node_id Body            = NilNodeID;
-
-        Condition = ParseExpression();
+        node_id Condition = ParseExpression();
 
         ParserExpectAndSkip(')', Str("expected ')' after while-loop condition"));
 
-        Body = ParseStatement();
+        node_id Body = ParseStatement();
 
-        Result = PushForNode(FirstToken, Initializer, Condition, PostIteration, Body);
+        Result = PushWhileNode(FirstToken, Condition, Body);
     }
     else if (NextIfMatchToken(TokenKind_Do))
     {
-        node_id Initializer     = NilNodeID;
-        node_id Condition       = NilNodeID;
-        node_id PostIteration   = NilNodeID;
-        node_id Body            = NilNodeID;
-
-        Body = ParseExpression();
-        Initializer = Body; // TODO(vak): Get rid of this cheap hack!
+        node_id Body = ParseExpression();
 
         ParserExpectAndSkip(TokenKind_While, Str("expected 'while' after body in do-while loop"));
         ParserExpectAndSkip('(', Str("expected '(' after 'while'"));
 
-        Condition = ParseExpression();
+        node_id Condition = ParseExpression();
 
         ParserExpectAndSkip(')', Str("expected ')' after while-loop condition"));
 
-        Result = PushForNode(FirstToken, Initializer, Condition, PostIteration, Body);
+        Result = PushDoWhileNode(FirstToken, Condition, Body);
     }
     else if (NextIfMatchToken(TokenKind_Break))
     {
