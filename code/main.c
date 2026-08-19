@@ -69,6 +69,7 @@ local void Main(void)
     PrintNewLine();
     PrintBlockIR(Block);
     PrintNewLine();
+
 #else
     // NOTE(vak): Simple test cases involving expressions and
     // a few statements.

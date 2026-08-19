@@ -8,7 +8,7 @@ typedef enum
 {
     IR_OperandKind_Nil = 0,
     IR_OperandKind_Imm,     // NOTE(vak): Immediate value
-    IR_OperandKind_Temp,    // NOTE(vak): Temporary value
+    IR_OperandKind_Temp,    // NOTE(vak): Temporary register
 } ir_operand_kind;
 
 typedef struct
@@ -65,6 +65,7 @@ typedef struct
     u32         TempRegisterCount;
 } ir_block;
 
+// NOTE(vak): Will be replaced by an arena allocator
 local ir_op OperationsIR[4096] = {0};
 local u32 OperationCountIR = 0;
 
