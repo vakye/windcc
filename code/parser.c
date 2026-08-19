@@ -311,9 +311,6 @@ local void AppendNodeList(node_list* List, node_id NodeID)
     }
 }
 
-local node_id ParseExpression(void);
-local node_id ParseStatement(void);
-
 local void ParserExpect(token_kind Kind, string Message)
 {
     if (!MatchToken(Kind))
@@ -485,28 +482,6 @@ local node_id ParseExpressionHead(void)
     return (Result);
 }
 
-local b32 IsPostfixNodeKind(node_kind Kind)
-{
-    b32 Result = false;
-
-    #define MatchNodeKind(Name) Result |= ((Kind) == (NodeKind_##Name));
-        AllPostfixNodeKinds(MatchNodeKind)
-    #undef MatchNodeKind
-
-    return (Result);
-}
-
-local b32 IsBinaryNodeKind(node_kind Kind)
-{
-    b32 Result = false;
-
-    #define MatchNodeKind(Name) Result |= ((Kind) == (NodeKind_##Name));
-        AllBinaryNodeKinds(MatchNodeKind)
-    #undef MatchNodeKind
-
-    return (Result);
-}
-
 local node_id ParseExpressionTail(precedence MinPrecedence, node_id Left)
 {
     node_id Result = Left;
@@ -528,12 +503,7 @@ local node_id ParseExpressionTail(precedence MinPrecedence, node_id Left)
 
         NextToken();
 
-        if (IsBinaryNodeKind(TailOp.Kind))
-        {
-            node_id Right = ParseExpressionMain(Precedence);
-            Result = PushBinaryNode(TailOp.Kind, Token, Result, Right);
-        }
-        else if (IsPostfixNodeKind(TailOp.Kind))
+        if (Precedence == Precedence_Postfix)
         {
             Result = PushUnaryNode(TailOp.Kind, Token, Result);
         }
@@ -547,6 +517,11 @@ local node_id ParseExpressionTail(precedence MinPrecedence, node_id Left)
             node_id Right = ParseExpressionMain(Precedence_Ternary);
 
             Result = PushTernaryNode(NodeKind_Ternary, Token, Left, Middle, Right);
+        }
+        else
+        {
+            node_id Right = ParseExpressionMain(Precedence);
+            Result = PushBinaryNode(TailOp.Kind, Token, Result, Right);
         }
 
         Token = GetCurrentToken();
@@ -565,6 +540,8 @@ local node_id ParseExpressionMain(precedence MinPrecedence)
 
     return (Result);
 }
+
+local node_id ParseStatement(void);
 
 local node_id ParseBlock(void)
 {
