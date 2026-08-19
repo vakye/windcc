@@ -1,695 +1,479 @@
 
 #pragma once
 
+#define AllPrimaryNodeKinds(X) \
+    X(Integer) \
+    X(Identifier)
+
+#define AllPrefixNodeKinds(X) \
+    X(Negate) \
+    X(BitwiseNot) \
+    X(LogicalNot) \
+    X(AddressOf) \
+    X(Dereference) \
+    X(PreIncrement) \
+    X(PreDecrement)
+
+#define AllPostfixNodeKinds(X) \
+    X(PostIncrement) \
+    X(PostDecrement)
+
+#define AllUnaryNodeKinds(X) \
+    AllPrefixNodeKinds(X) \
+    AllPostfixNodeKinds(X)
+
+#define AllBinaryNodeKinds(X) \
+    X(Add) \
+    X(Sub) \
+    X(Mul) \
+    X(Div) \
+    X(Mod) \
+    \
+    X(ShiftLeft) \
+    X(ShiftRight) \
+    \
+    X(Equal) \
+    X(NotEqual) \
+    X(Less) \
+    X(Greater) \
+    X(LessEqual) \
+    X(GreaterEqual) \
+    \
+    X(BitwiseAnd) \
+    X(BitwiseXor) \
+    X(BitwiseOr) \
+    \
+    X(LogicalAnd) \
+    X(LogicalOr) \
+    \
+    X(Assign) \
+    X(AssignAdd) \
+    X(AssignSub) \
+    X(AssignMul) \
+    X(AssignDiv) \
+    X(AssignMod) \
+    X(AssignBitwiseAnd) \
+    X(AssignBitwiseXor) \
+    X(AssignBitwiseOr) \
+    X(AssignShiftLeft) \
+    X(AssignShiftRight)
+
+#define AllStatementNodeKinds(X) \
+    X(If) \
+    X(For) \
+    X(Break) \
+    X(Continue) \
+    X(Return)
+
+#define AllNodeKinds(X) \
+    X(Nil) \
+    X(Ignore) \
+    \
+    AllPrimaryNodeKinds(X) \
+    AllUnaryNodeKinds(X) \
+    AllBinaryNodeKinds(X) \
+    AllStatementNodeKinds(X) \
+    \
+    X(Ternary) \
+    X(Block)
+
 typedef enum
 {
-    NodeKind_Nil = 0,
+    #define DefineNodeKind(Name) NodeKind_##Name,
+        AllNodeKinds(DefineNodeKind)
+    #undef DefineNodeKind
 
-    NodeKind_Block,
-
-    NodeKind_Integer,
-    NodeKind_Identifier,
-
-    NodeKind_Negate,
-    NodeKind_LogicalNot,
-    NodeKind_BitwiseNot,
-
-    NodeKind_Add,
-    NodeKind_Sub,
-    NodeKind_Mul,
-    NodeKind_Div,
-    NodeKind_Mod,
-
-    NodeKind_Equal,
-    NodeKind_NotEqual,
-    NodeKind_Less,
-    NodeKind_Greater,
-    NodeKind_LessEqual,
-    NodeKind_GreaterEqual,
-
-    NodeKind_ShiftLeft,
-    NodeKind_ShiftRight,
-
-    NodeKind_BitwiseAnd,
-    NodeKind_BitwiseXor,
-    NodeKind_BitwiseOr,
-
-    NodeKind_LogicalAnd,
-    NodeKind_LogicalOr,
-
-    NodeKind_Ternary,
-
-    NodeKind_PostIncrement,
-    NodeKind_PostDecrement,
-    NodeKind_PreIncrement,
-    NodeKind_PreDecrement,
-
-    NodeKind_AddressOf,
-    NodeKind_Dereference,
-
-    NodeKind_Assign,
-    NodeKind_Declare,
-    NodeKind_If,
-    NodeKind_For,
-    NodeKind_Break,
-    NodeKind_Continue,
+    NodeKind_COUNT,
 } node_kind;
 
-typedef enum
-{
-    TypeSpecKind_Normal = 0,
-    TypeSpecKind_Function,
-} type_spec_kind;
+typedef u32 node_id;
 
-typedef struct type_spec type_spec;
-struct type_spec
+#define NilNodeID (0)
+
+typedef struct
 {
-    type_spec_kind Kind;
-    b32 SignDoesntMatter;
-    b32 Signed;
-    usize Bytes;
-    type_spec* PointingTo;
-    type_spec* ReturnType;
-    usize ArrayCount;
-};
+    node_id First;
+    node_id Last;
+} node_list;
+
+#define NilNodeList (node_list){NilNodeID, NilNodeID}
 
 typedef struct node node;
 struct node
 {
     node_kind Kind;
-    node* Next;
+    node_id Next;
     token Token;
 
-    usize Integer;
+    union
+    {
+        struct { usize Value; } Integer;
+        struct { string Value; } Identifier;
 
-    type_spec TypeSpec;
-    string Identifier;
-    node* Initializer;
-    node* FunctionBody;
+        struct
+        {
+            node_id Operand;
+        } Unary;
 
-    node* Left;
-    node* Right;
+        struct
+        {
+            node_id Left;
+            node_id Right;
+        } Binary;
 
-    node* IfCond;
-    node* IfThen;
-    node* IfElse;
+        struct
+        {
+            node_id Left;
+            node_id Middle;
+            node_id Right;
+        } Ternary;
 
-    node* FirstStatement;
+        struct
+        {
+            node_id Condition;
+            node_id Then;
+            node_id Else;
+        } If;
 
-    node* ForInit;
-    node* ForCond;
-    node* ForIter;
-    node* ForBody;
+        struct
+        {
+            node_id Initializer;
+            node_id Condition;
+            node_id PostIteration;
+            node_id Body;
+        } For;
+
+        struct
+        {
+            node_id Value;
+        } Return;
+
+        struct
+        {
+            node_list Statements;
+        } Block;
+    };
 };
 
-local node* AllocateNode(node_kind Kind, token Token)
+// TODO(vak): Will be replaced by an arena allocator eventually....
+local node Nodes[4096] = {0};
+local u32 NodeCount = 1; // NOTE(vak): First spot reserved for NilNodeID
+
+local node* GetNode(node_id NodeID)
 {
-    node* Node = Allocate(sizeof(node));
+    persist node NilNode = {0};
 
-    ZeroType(Node);
-    Node->Kind = Kind;
-    Node->Token = Token;
+    node* Result = &NilNode;
 
-    return (Node);
-}
-
-local node* AllocateUnaryNode(node_kind Kind, token Token, node* Left)
-{
-    node* Node = AllocateNode(Kind, Token);
-    Node->Left = Left;
-
-    return (Node);
-}
-
-local node* AllocateBinaryNode(node_kind Kind, token Token, node* Left, node* Right)
-{
-    node* Node = AllocateNode(Kind, Token);
-
-    Node->Left = Left;
-    Node->Right = Right;
-
-    return (Node);
-}
-
-local type_spec* AllocateTypeSpec(type_spec_kind Kind)
-{
-    type_spec* TypeSpec = Allocate(sizeof(type_spec));
-
-    ZeroType(TypeSpec);
-    TypeSpec->Kind = Kind;
-
-    return (TypeSpec);
-}
-
-local node* ParseExpression(void);
-
-local node* ParsePrimary(void)
-{
-    node* Node = 0;
-
-    token Token = GetCurrentToken();
-
-    if (NextIfMatchToken(TokenKind_Integer))
-    {
-        Node = AllocateNode(NodeKind_Integer, Token);
-        Node->Integer = TokenToInteger(Token);
-    }
-    else if (NextIfMatchToken(TokenKind_Identifier))
-    {
-        Node = AllocateNode(NodeKind_Identifier, Token);
-        Node->Identifier = Token.String;
-    }
-    else if (NextIfMatchToken('('))
-    {
-        Node = ParseExpression();
-
-        if (!NextIfMatchToken(')'))
-        {
-            Println(Str("ERROR: expected matching ')'"));
-            Exit(1);
-        }
-    }
-    else if (MatchToken(';'))
-    {
-        // NOTE(vak): Ignore
-    }
+    if ((NodeID != NilNodeID) && (NodeID < ArrayCount(Nodes)))
+        Result = Nodes + NodeID;
     else
+        ZeroType(&NilNode);
+
+    return (Result);
+}
+
+local node_id PushNode(node_kind Kind, token Token)
+{
+    if (NodeCount == ArrayCount(Nodes))
     {
-        Println(Str("ERROR: syntax error"));
+        Println(Str("ERROR: ran out of node memory"));
         Exit(1);
     }
 
-    return (Node);
+    node_id NodeID = NodeCount++;
+
+    ZeroType(Nodes + NodeID);
+
+    Nodes[NodeID].Kind = Kind;
+    Nodes[NodeID].Token = Token;
+
+    return (NodeID);
 }
 
-local node* ParsePostfix(void)
+local node_id PushIntegerNode(token Token)
 {
-    node* Node = ParsePrimary();
+    node_id NodeID = PushNode(NodeKind_Integer, Token);
 
-    for (;;)
-    {
-        token Token = GetCurrentToken();
+    Nodes[NodeID].Integer.Value = TokenToInteger(Token);
 
-        if (NextIfMatchToken(TokenKind_DoublePlus))
-        {
-            Node = AllocateUnaryNode(NodeKind_PostIncrement, Token, Node);
-        }
-        else if (NextIfMatchToken(TokenKind_DoubleMinus))
-        {
-            Node = AllocateUnaryNode(NodeKind_PostDecrement, Token, Node);
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
+    return (NodeID);
 }
 
-local node* ParsePrefix(void)
+local node_id PushIdentifierNode(token Token)
 {
-    node* Node = 0;
+    node_id NodeID = PushNode(NodeKind_Identifier, Token);
 
-    token Token = GetCurrentToken();
+    Nodes[NodeID].Identifier.Value = TokenToString(Token);
 
-    if (NextIfMatchToken('-'))
+    return (NodeID);
+}
+
+local node_id PushUnaryNode(node_kind Kind, token Token, node_id Operand)
+{
+    node_id NodeID = PushNode(Kind, Token);
+
+    Nodes[NodeID].Unary.Operand = Operand;
+
+    return (NodeID);
+}
+
+local node_id PushBinaryNode(node_kind Kind, token Token, node_id Left, node_id Right)
+{
+    node_id NodeID = PushNode(Kind, Token);
+
+    Nodes[NodeID].Binary.Left = Left;
+    Nodes[NodeID].Binary.Right = Right;
+
+    return (NodeID);
+}
+
+local node_id PushTernaryNode(node_kind Kind, token Token, node_id Left, node_id Middle, node_id Right)
+{
+    node_id NodeID = PushNode(Kind, Token);
+
+    Nodes[NodeID].Ternary.Left = Left;
+    Nodes[NodeID].Ternary.Middle = Middle;
+    Nodes[NodeID].Ternary.Right = Right;
+
+    return (NodeID);
+}
+
+local node_id PushIfNode(token Token, node_id Condition, node_id Then, node_id Else)
+{
+    node_id NodeID = PushNode(NodeKind_If, Token);
+
+    Nodes[NodeID].If.Condition  = Condition;
+    Nodes[NodeID].If.Then       = Then;
+    Nodes[NodeID].If.Else       = Else;
+
+    return (NodeID);
+}
+
+local node_id PushForNode(
+    token Token,
+    node_id Initializer, 
+    node_id Condition,
+    node_id PostIteration,
+    node_id Body
+)
+{
+    node_id NodeID = PushNode(NodeKind_For, Token);
+
+    Nodes[NodeID].For.Initializer   = Initializer;
+    Nodes[NodeID].For.Condition     = Condition;
+    Nodes[NodeID].For.PostIteration = PostIteration;
+    Nodes[NodeID].For.Body          = Body;
+
+    return (NodeID);
+}
+
+local node_id PushBlockNode(
+    token Token,
+    node_list Statements
+)
+{
+    node_id NodeID = PushNode(NodeKind_Block, Token);
+
+    Nodes[NodeID].Block.Statements = Statements;
+
+    return (NodeID);
+}
+
+local node_id PushReturnNode(
+    token Token,
+    node_id Value
+)
+{
+    node_id NodeID = PushNode(NodeKind_Return, Token);
+
+    Nodes[NodeID].Return.Value = Value;
+
+    return (NodeID);
+}
+
+
+local void AppendNodeList(node_list* List, node_id NodeID)
+{
+    if (NodeID == NilNodeID)
+        return;
+
+    if (List->First == NilNodeID)
     {
-        Node = AllocateUnaryNode(NodeKind_Negate, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken('!'))
-    {
-        Node = AllocateUnaryNode(NodeKind_LogicalNot, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken('~'))
-    {
-        Node = AllocateUnaryNode(NodeKind_BitwiseNot, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken('+'))
-    {
-        Node = ParsePrefix();
-    }
-    else if (NextIfMatchToken(TokenKind_DoublePlus))
-    {
-        Node = AllocateUnaryNode(NodeKind_PreIncrement, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken(TokenKind_DoubleMinus))
-    {
-        Node = AllocateUnaryNode(NodeKind_PreDecrement, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken('&'))
-    {
-        Node = AllocateUnaryNode(NodeKind_AddressOf, Token, ParsePrefix());
-    }
-    else if (NextIfMatchToken('*'))
-    {
-        Node = AllocateUnaryNode(NodeKind_Dereference, Token, ParsePrefix());
+        List->First = NodeID;
+        List->Last = NodeID;
     }
     else
     {
-        Node = ParsePostfix();
+        node* Last = GetNode(List->Last);
+        Last->Next = NodeID;
+        List->Last = NodeID;
     }
-
-    return (Node);
 }
 
-local node* ParseFactor(void)
+local node_id ParseExpression(void);
+local node_id ParseStatement(void);
+
+local void ParserExpect(token_kind Kind, string Message)
 {
-    node* Node = ParsePrefix();
-
-    for (;;)
+    if (!MatchToken(Kind))
     {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('*'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParsePrefix());
-        }
-        else if (NextIfMatchToken('/'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Div, Token, Node, ParsePrefix());
-        }
-        else if (NextIfMatchToken('%'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParsePrefix());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseSum(void)
-{
-    node* Node = ParseFactor();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('+'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseFactor());
-        }
-        else if (NextIfMatchToken('-'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseFactor());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseShift(void)
-{
-    node* Node = ParseSum();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken(TokenKind_DoubleLess))
-        {
-            Node = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseSum());
-        }
-        else if (NextIfMatchToken(TokenKind_DoubleGreater))
-        {
-            Node = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseSum());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseComparison(void)
-{
-    node* Node = ParseShift();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('<'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Less, Token, Node, ParseShift());
-        }
-        else if (NextIfMatchToken('>'))
-        {
-            Node = AllocateBinaryNode(NodeKind_Greater, Token, Node, ParseShift());
-        }
-        else if (NextIfMatchToken(TokenKind_LessEqual))
-        {
-            Node = AllocateBinaryNode(NodeKind_LessEqual, Token, Node, ParseShift());
-        }
-        else if (NextIfMatchToken(TokenKind_GreaterEqual))
-        {
-            Node = AllocateBinaryNode(NodeKind_GreaterEqual, Token, Node, ParseShift());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseEquality(void)
-{
-    node* Node = ParseComparison();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken(TokenKind_DoubleEqual))
-        {
-            Node = AllocateBinaryNode(NodeKind_Equal, Token, Node, ParseComparison());
-        }
-        else if (NextIfMatchToken(TokenKind_BangEqual))
-        {
-            Node = AllocateBinaryNode(NodeKind_NotEqual, Token, Node, ParseComparison());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseAnd(void)
-{
-    node* Node = ParseEquality();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('&'))
-        {
-            Node = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseEquality());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseXor(void)
-{
-    node* Node = ParseAnd();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('^'))
-        {
-            Node = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAnd());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseOr(void)
-{
-    node* Node = ParseXor();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken('|'))
-        {
-            Node = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseXor());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseLogicalAnd(void)
-{
-    node* Node = ParseOr();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken(TokenKind_DoubleAmpersand))
-        {
-            Node = AllocateBinaryNode(NodeKind_LogicalAnd, Token, Node, ParseOr());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseLogicalOr(void)
-{
-    node* Node = ParseLogicalAnd();
-
-    for (;;)
-    {
-        token Token = GetCurrentToken();
-
-        if (NextIfMatchToken(TokenKind_DoubleBar))
-        {
-            Node = AllocateBinaryNode(NodeKind_LogicalOr, Token, Node, ParseLogicalAnd());
-        }
-        else
-        {
-            break;
-        }
-    }
-
-    return (Node);
-}
-
-local node* ParseTernary(void)
-{
-    node* Node = ParseLogicalOr();
-
-    token Token = GetCurrentToken();
-
-    if (NextIfMatchToken('?'))
-    {
-        node* TernaryNode = AllocateNode(NodeKind_Ternary, Token);
-
-        TernaryNode->IfCond = Node;
-        TernaryNode->IfThen = ParseTernary();
-
-        if (!NextIfMatchToken(':'))
-        {
-            Println(Str("ERROR: missing ':' in ternary expression"));
-            Exit(1);
-        }
-
-        TernaryNode->IfElse = ParseTernary();
-
-        Node = TernaryNode;
-    }
-
-    return (Node);
-}
-
-local node* ParseAssignment(void)
-{
-    node* Node = ParseTernary();
-
-    token Token = GetCurrentToken();
-
-    if (NextIfMatchToken('='))
-    {
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, ParseAssignment());
-    }
-    else if (NextIfMatchToken(TokenKind_PlusEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_Add, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_MinusEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_Sub, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_StarEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_Mul, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_SlashEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_Div, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_PercentEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_Mod, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_DoubleLessEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_ShiftLeft, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_DoubleGreaterEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_ShiftRight, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_AmpersandEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseAnd, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_HatEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseXor, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-    else if (NextIfMatchToken(TokenKind_BarEqual))
-    {
-        node* OpNode = AllocateBinaryNode(NodeKind_BitwiseOr, Token, Node, ParseAssignment());
-        Node = AllocateBinaryNode(NodeKind_Assign, Token, Node, OpNode);
-    }
-
-    return (Node);
-}
-
-local node* ParseExpression(void)
-{
-    node* Node = ParseAssignment();
-    return (Node);
-}
-
-local node* ParseStatement(void);
-local node* ParseBlock(void);
-
-local node* ParseDeclaration(type_spec TypeSpec)
-{
-    node* Node = AllocateNode(NodeKind_Declare, GetCurrentToken());
-
-    Node->TypeSpec = TypeSpec;
-
-    while (NextIfMatchToken('*'))
-    {
-        type_spec* PointingTo = AllocateTypeSpec(TypeSpecKind_Normal);
-        *PointingTo = Node->TypeSpec;
-
-        Node->TypeSpec.Bytes = 8;
-        Node->TypeSpec.PointingTo = PointingTo;
-    }
-
-    token IdentifierToken = GetCurrentToken();
-
-    if (!NextIfMatchToken(TokenKind_Identifier))
-    {
-        Print(Str("ERROR: '"));
-        Print(IdentifierToken.String);
-        Print(Str("' is not a valid variable name"));
-        PrintNewLine();
+        Print(Str("ERROR: "));
+        Println(Message);
         Exit(1);
     }
+}
 
-    Node->Identifier = IdentifierToken.String;
-
-    while (NextIfMatchToken('['))
+local void ParserExpectAndSkip(token_kind Kind, string Message)
+{
+    if (!NextIfMatchToken(Kind))
     {
-        token Token = GetCurrentToken();
+        Print(Str("ERROR: "));
+        Println(Message);
+        Exit(1);
+    }
+}
 
-        if (!MatchToken(TokenKind_Integer))
-        {
-            Println(Str("ERROR: expected array size to be specified"));
-            Exit(1);
-        }
+typedef enum
+{
+    // NOTE(vak): Reference:
+    // https://en.cppreference.com/c/language/operator_precedence
 
-        type_spec* PointingTo = AllocateTypeSpec(TypeSpecKind_Normal);
-        *PointingTo = Node->TypeSpec;
+    Precedence_Lowest = 0,
 
-        Node->TypeSpec.Bytes = 8;
-        Node->TypeSpec.PointingTo = PointingTo;
-        Node->TypeSpec.ArrayCount = TokenToInteger(Token);
+    Precedence_Postfix,
+    Precedence_Prefix,
+    Precedence_Factor,
+    Precedence_Sum,
+    Precedence_Shift,
+    Precedence_Comparison,
+    Precedence_Equality,
+    Precedence_BitwiseAnd,
+    Precedence_BitwiseXor,
+    Precedence_BitwiseOr,
+    Precedence_LogicalAnd,
+    Precedence_LogicalOr,
+    Precedence_Ternary,
+    Precedence_Assign,
 
-        if (Node->TypeSpec.ArrayCount == 0)
-        {
-            Println(Str("ERROR: specified array size must be larger than 0"));
-            Exit(1);
-        }
+    Precedence_Highest,
+} precedence;
 
+typedef enum
+{
+    Associativity_LeftToRight = 0,
+    Associativity_RightToLeft,
+} associativity;
+
+// NOTE(vak):
+// Bit 0 - 6:   Precedennce (see parse_precedence)
+// Bit 7:       Associativity (0 for left-to-right, 1 for right-to-left)
+
+typedef u8 parse_op_info;
+
+#define ParseOpInfo(Precedence, Associativity) ((Precedence) | ((Associativity) << 7))
+
+#define ExtractPrecedence(ParseOpInfo) ((ParseOpInfo) & 0x7F)
+#define ExtractAssociativity(ParseOpInfo) ((ParseOpInfo) >> 7)
+
+typedef struct
+{
+    node_kind           Kind;
+    parse_op_info       Info;
+} parse_op;
+
+persist parse_op HeadParseOps[] =
+{
+    ['+']                       = { NodeKind_Ignore,        ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    ['-']                       = { NodeKind_Negate,        ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    ['~']                       = { NodeKind_BitwiseNot,    ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    ['!']                       = { NodeKind_LogicalNot,    ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    ['&']                       = { NodeKind_AddressOf,     ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    ['*']                       = { NodeKind_Dereference,   ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    [TokenKind_DoublePlus]      = { NodeKind_PreIncrement,  ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+    [TokenKind_DoubleMinus]     = { NodeKind_PreDecrement,  ParseOpInfo(Precedence_Prefix, Associativity_RightToLeft) },
+};
+
+persist parse_op TailParseOps[] =
+{
+    ['+']                               = { NodeKind_Add,                   ParseOpInfo(Precedence_Sum,        Associativity_LeftToRight) },
+    ['-']                               = { NodeKind_Sub,                   ParseOpInfo(Precedence_Sum,        Associativity_LeftToRight) },
+    ['*']                               = { NodeKind_Mul,                   ParseOpInfo(Precedence_Factor,     Associativity_LeftToRight) },
+    ['/']                               = { NodeKind_Div,                   ParseOpInfo(Precedence_Factor,     Associativity_LeftToRight) },
+    ['%']                               = { NodeKind_Mod,                   ParseOpInfo(Precedence_Factor,     Associativity_LeftToRight) },
+    [TokenKind_DoubleLess]              = { NodeKind_ShiftLeft,             ParseOpInfo(Precedence_Shift,      Associativity_LeftToRight) },
+    [TokenKind_DoubleGreater]           = { NodeKind_ShiftRight,            ParseOpInfo(Precedence_Shift,      Associativity_LeftToRight) },
+    [TokenKind_DoubleEqual]             = { NodeKind_Equal,                 ParseOpInfo(Precedence_Equality,   Associativity_LeftToRight) },
+    [TokenKind_BangEqual]               = { NodeKind_NotEqual,              ParseOpInfo(Precedence_Equality,   Associativity_LeftToRight) },
+    ['<']                               = { NodeKind_Less,                  ParseOpInfo(Precedence_Comparison, Associativity_LeftToRight) },
+    ['>']                               = { NodeKind_Greater,               ParseOpInfo(Precedence_Comparison, Associativity_LeftToRight) },
+    [TokenKind_LessEqual]               = { NodeKind_LessEqual,             ParseOpInfo(Precedence_Comparison, Associativity_LeftToRight) },
+    [TokenKind_GreaterEqual]            = { NodeKind_GreaterEqual,          ParseOpInfo(Precedence_Comparison, Associativity_LeftToRight) },
+    ['&']                               = { NodeKind_BitwiseAnd,            ParseOpInfo(Precedence_BitwiseAnd, Associativity_LeftToRight) },
+    ['^']                               = { NodeKind_BitwiseXor,            ParseOpInfo(Precedence_BitwiseXor, Associativity_LeftToRight) },
+    ['|']                               = { NodeKind_BitwiseOr,             ParseOpInfo(Precedence_BitwiseOr,  Associativity_LeftToRight) },
+    [TokenKind_DoubleAmpersand]         = { NodeKind_LogicalAnd,            ParseOpInfo(Precedence_LogicalAnd, Associativity_LeftToRight) },
+    [TokenKind_DoubleBar]               = { NodeKind_LogicalOr,             ParseOpInfo(Precedence_LogicalOr,  Associativity_LeftToRight) },
+
+    ['=']                               = { NodeKind_Assign,                ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_PlusEqual]               = { NodeKind_AssignAdd,             ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_MinusEqual]              = { NodeKind_AssignSub,             ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_StarEqual]               = { NodeKind_AssignMul,             ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_SlashEqual]              = { NodeKind_AssignDiv,             ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_PercentEqual]            = { NodeKind_AssignMod,             ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_AmpersandEqual]          = { NodeKind_AssignBitwiseAnd,      ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_HatEqual]                = { NodeKind_AssignBitwiseXor,      ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_BarEqual]                = { NodeKind_AssignBitwiseOr,       ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_DoubleLessEqual]         = { NodeKind_AssignShiftLeft,       ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+    [TokenKind_DoubleGreaterEqual]      = { NodeKind_AssignShiftRight,      ParseOpInfo(Precedence_Assign,     Associativity_RightToLeft) },
+
+    [TokenKind_DoublePlus]              = { NodeKind_PostIncrement,         ParseOpInfo(Precedence_Postfix,    Associativity_LeftToRight) },
+    [TokenKind_DoubleMinus]             = { NodeKind_PostDecrement,         ParseOpInfo(Precedence_Postfix,    Associativity_LeftToRight) },
+
+    ['?']                               = { NodeKind_Ternary,               ParseOpInfo(Precedence_Ternary,    Associativity_RightToLeft) },
+};
+
+local node_id ParseExpressionMain(precedence MinPrecedence);
+
+#define ParseExpression() ParseExpressionMain(Precedence_Highest)
+
+local node_id ParseExpressionHead(void)
+{
+    node_id Result = NilNodeID;
+
+    token Token = GetCurrentToken();
+    parse_op HeadOp = HeadParseOps[Token.Kind];
+
+    if (HeadOp.Kind != NodeKind_Nil)
+    {
         NextToken();
 
-        if (!NextIfMatchToken(']'))
-        {
-            Println(Str("ERROR: missing matching ']'"));
-            Exit(1);
-        }
+        precedence Precedence = ExtractPrecedence(HeadOp.Info);
+
+        node_id Operand = ParseExpressionMain(Precedence);
+
+        if (HeadOp.Kind != NodeKind_Ignore)
+            Result = PushUnaryNode(HeadOp.Kind, Token, Operand);
+        else
+            Result = Operand;
     }
-
-    token Token = GetCurrentToken();
-
-    if (NextIfMatchToken('='))
-    {
-        node* IdentifierNode = AllocateNode(NodeKind_Identifier, IdentifierToken);
-        IdentifierNode->Identifier = Node->Identifier;
-
-        Node->Initializer = AllocateBinaryNode(NodeKind_Assign, Token, IdentifierNode, ParseExpression());
-
-        if (!NextIfMatchToken(';'))
+    else
+    { 
+        if (NextIfMatchToken(TokenKind_Integer))
         {
-            Println(Str("ERROR: expected ';' at end of statement"));
-            Exit(1);
+            Result = PushIntegerNode(Token);
         }
-    }
-    else if (NextIfMatchToken('('))
-    {
-        type_spec* ReturnType = AllocateTypeSpec(TypeSpecKind_Normal);
-        *ReturnType = Node->TypeSpec;
-
-        Node->TypeSpec.Kind = TypeSpecKind_Function;
-        Node->TypeSpec.ReturnType = ReturnType;
-
-        if (!NextIfMatchToken(')'))
+        else if (NextIfMatchToken(TokenKind_Identifier))
         {
-            Println(Str("ERROR: expected matching ')'"));
-            Exit(1);
+            Result = PushIdentifierNode(Token);
         }
-
-        if (NextIfMatchToken(';'))
+        else if (NextIfMatchToken('('))
         {
+            Result = ParseExpression();
+            ParserExpectAndSkip(')', Str("expected matching ')' in expression"));
         }
-        else if (MatchToken('{'))
+        else if (MatchToken(';'))
         {
-            Node->FunctionBody = ParseBlock();
         }
         else
         {
@@ -697,320 +481,337 @@ local node* ParseDeclaration(type_spec TypeSpec)
             Exit(1);
         }
     }
-    else if (NextIfMatchToken(';'))
-    {
-    }
-    else
-    {
-        Println(Str("ERROR: syntax error"));
-        Exit(1);
-    }
 
-    return (Node);
+    return (Result);
 }
 
-local type_spec ParseDeclarationSpecifiers(void)
+local b32 IsPostfixNodeKind(node_kind Kind)
 {
-    u32 UnsignedCount = 0;
-    u32 SignedCount = 0;
-    u32 IntCount = 0;
-    u32 ShortCount = 0;
-    u32 CharCount = 0;
-    u32 LongCount = 0;
+    b32 Result = false;
 
-    // NOTE(vak): Count qualifiers
+    #define MatchNodeKind(Name) Result |= ((Kind) == (NodeKind_##Name));
+        AllPostfixNodeKinds(MatchNodeKind)
+    #undef MatchNodeKind
 
-    for (;;)
-    {
-        if (0) {}
-        else if (NextIfMatchToken(TokenKind_Unsigned))      UnsignedCount++;
-        else if (NextIfMatchToken(TokenKind_Signed))        SignedCount++;
-        else if (NextIfMatchToken(TokenKind_Int))           IntCount++;
-        else if (NextIfMatchToken(TokenKind_Short))         ShortCount++;
-        else if (NextIfMatchToken(TokenKind_Char))          CharCount++;
-        else if (NextIfMatchToken(TokenKind_Long))          LongCount++;
-        else break;
-    }
-
-    // NOTE(vak): Count check
-    {
-        b32 HasError = true;
-
-        if (0) {}
-        else if (UnsignedCount > 1)     Println(Str("ERROR: too many 'unsigned' in declaration"));
-        else if (SignedCount > 1)       Println(Str("ERROR: too many 'signed' in declaration"));
-        else if (IntCount > 1)          Println(Str("ERROR: too many 'int' in declaration"));
-        else if (ShortCount > 1)        Println(Str("ERROR: too many 'short' in declaration"));
-        else if (CharCount > 1)         Println(Str("ERROR: too many 'char' in declaration"));
-        else if (LongCount > 2)         Println(Str("ERROR: too many 'long' in declaration"));
-        else HasError = false;
-
-        if (HasError)
-            Exit(1);
-    }
-
-    // NOTE(vak): Qualifier checks
-    {
-        b32 HasError = true;
-
-        b32 NoTypeSpecified =
-            (UnsignedCount || SignedCount) &&
-            !(IntCount || CharCount || ShortCount || LongCount);
-
-        b32 ConflictingTypes =
-            (CharCount && ShortCount) ||
-            (CharCount && LongCount) ||
-            (ShortCount && CharCount);
-
-        b32 ConflictingSign =
-            (UnsignedCount && SignedCount);
-
-        if (0) {}
-        else if (NoTypeSpecified)       Println(Str("ERROR: no type qualifier in declaration"));
-        else if (ConflictingTypes)      Println(Str("ERROR: conflicting type qualifiers in declaration"));
-        else if (ConflictingSign)       Println(Str("ERROR: conflicting sign qualifier in declaration"));
-        else
-            HasError = false;
-
-        if (HasError)
-            Exit(1);
-    }
-
-    type_spec TypeSpec = {0};
-
-    // NOTE(vak): Construct type spec
-    {
-        if (UnsignedCount)          TypeSpec.Signed = false;
-        else                        TypeSpec.Signed = true;
-
-        if (0) {}
-        else if (LongCount  == 2)   TypeSpec.Bytes = 8;
-        else if (LongCount  == 1)   TypeSpec.Bytes = 4;
-        else if (ShortCount == 1)   TypeSpec.Bytes = 2;
-        else if (CharCount  == 1)   TypeSpec.Bytes = 1;
-        else if (IntCount   == 1)   TypeSpec.Bytes = 4; // NOTE(vak): "int" case should be put last to prevent conflict
-    }
-
-    return (TypeSpec);
+    return (Result);
 }
 
-local node* ParseBlock(void)
+local b32 IsBinaryNodeKind(node_kind Kind)
 {
+    b32 Result = false;
+
+    #define MatchNodeKind(Name) Result |= ((Kind) == (NodeKind_##Name));
+        AllBinaryNodeKinds(MatchNodeKind)
+    #undef MatchNodeKind
+
+    return (Result);
+}
+
+local node_id ParseExpressionTail(precedence MinPrecedence, node_id Left)
+{
+    node_id Result = Left;
+
     token Token = GetCurrentToken();
+    parse_op TailOp = TailParseOps[Token.Kind];
 
-    if (!NextIfMatchToken('{'))
+    while (TailOp.Kind != NodeKind_Nil)
     {
-        Println(Str("ERROR: expected '{' at start of block"));
-        Exit(1);
-    }
+        precedence    Precedence    = ExtractPrecedence(TailOp.Info);
+        associativity Associativity = ExtractAssociativity(TailOp.Info);
 
-    node* BlockNode = AllocateNode(NodeKind_Block, Token);
-
-    node* FirstStatement = 0;
-    node* LastStatement = 0;
-
-    for (;;)
-    {
-        if (MatchToken(TokenKind_EOF) || MatchToken('}'))
+        if (Precedence > MinPrecedence)
             break;
 
-        node* Statement = ParseStatement();
-        if (!Statement)
-            continue;
+        if (Associativity == Associativity_LeftToRight)
+            if (Precedence == MinPrecedence)
+                break;
 
-        if (!FirstStatement)
+        NextToken();
+
+        if (IsBinaryNodeKind(TailOp.Kind))
         {
-            FirstStatement = Statement;
-            LastStatement = Statement;
+            node_id Right = ParseExpressionMain(Precedence);
+            Result = PushBinaryNode(TailOp.Kind, Token, Result, Right);
         }
-        else
+        else if (IsPostfixNodeKind(TailOp.Kind))
         {
-            LastStatement->Next = Statement;
-            LastStatement = Statement;
+            Result = PushUnaryNode(TailOp.Kind, Token, Result);
         }
+        else if (TailOp.Kind == NodeKind_Ternary)
+        {
+            node_id Left   = Result;
+            node_id Middle = ParseExpressionMain(Precedence_Ternary);
+
+            ParserExpectAndSkip(':', Str("missing ':' in ternary expression"));
+
+            node_id Right = ParseExpressionMain(Precedence_Ternary);
+
+            Result = PushTernaryNode(NodeKind_Ternary, Token, Left, Middle, Right);
+        }
+
+        Token = GetCurrentToken();
+        TailOp = TailParseOps[Token.Kind];
     }
 
-    if (!NextIfMatchToken('}'))
-    {
-        Println(Str("ERROR: missing '}' at end of block"));
-        Exit(1);
-    }
-
-    BlockNode->FirstStatement = FirstStatement;
-
-    return (BlockNode);
+    return (Result);
 }
 
-local node* ParseStatement(void)
+local node_id ParseExpressionMain(precedence MinPrecedence)
 {
-    node* Node = 0;
+    node_id Result = NilNodeID;
 
-    token Token = GetCurrentToken();
+    Result = ParseExpressionHead();
+    Result = ParseExpressionTail(MinPrecedence, Result);
 
-    type_spec TypeSpec = ParseDeclarationSpecifiers();
-    if (TypeSpec.Bytes)
+    return (Result);
+}
+
+local node_id ParseBlock(void)
+{
+    token FirstToken = GetCurrentToken();
+
+    ParserExpectAndSkip('{', Str("expected '{' at start of block"));
+
+    node_list Statements = NilNodeList;
+
+    for (;;)
     {
-        Node = ParseDeclaration(TypeSpec);
+        if (MatchToken(TokenKind_EOF))  break;
+        if (MatchToken('}'))            break;
 
+        AppendNodeList(&Statements, ParseStatement());
     }
-    else if (NextIfMatchToken(TokenKind_If))
+
+    ParserExpectAndSkip('}', Str("expected '}' at end of block"));
+
+    node_id Result = PushBlockNode(FirstToken, Statements);
+    return (Result);
+}
+
+local node_id ParseStatement(void)
+{
+    node_id Result = NilNodeID;
+
+    token FirstToken = GetCurrentToken();
+
+    if (NextIfMatchToken(TokenKind_If))
     {
-        Node = AllocateNode(NodeKind_If, Token);
+        ParserExpect('(', Str("expected '(' after 'if'"));
 
-        if (!MatchToken('('))
-        {
-            Println(Str("ERROR: expected if conditional to start with '('"));
-            Exit(1);
-        }
-
-        Node->IfCond = ParseExpression();
-
-        Node->IfThen = ParseStatement();
+        node_id Condition = ParseExpression();
+        node_id Then      = ParseStatement();
+        node_id Else      = NilNodeID;
 
         if (NextIfMatchToken(TokenKind_Else))
-        {
-            Node->IfElse = ParseStatement();
-        }
+            Else = ParseStatement();
+
+        Result = PushIfNode(FirstToken, Condition, Then, Else);
     }
     else if (NextIfMatchToken(TokenKind_For))
     {
-        Node = AllocateNode(NodeKind_For, Token);
+        ParserExpectAndSkip('(', Str("ERROR: expected '(' after 'for'"));
 
-        if (!NextIfMatchToken('('))
-        {
-            Println(Str("ERROR: expected '(' after for"));
-            Exit(1);
-        }
+        node_id Initializer     = NilNodeID;
+        node_id Condition       = NilNodeID;
+        node_id PostIteration   = NilNodeID;
+        node_id Body            = NilNodeID;
 
-        // NOTE(vak): For loop init clause can either be a declaration or
-        // an expression
+        Initializer = ParseExpression();
 
-        type_spec TypeSpec = ParseDeclarationSpecifiers();
+        ParserExpectAndSkip(';', Str("expected ';' after for-loop initializer"));
 
-        if (TypeSpec.Bytes)
-            Node->ForInit = ParseDeclaration(TypeSpec);
-        else
-        {
-            Node->ForInit = ParseExpression();
+        Condition = ParseExpression();
 
-            if (!NextIfMatchToken(';'))
-            {
-                Println(Str("ERROR: expected ';' after for loop initializer"));
-                Exit(1);
-            }
-        }
+        ParserExpectAndSkip(';', Str("expected ';' after for-loop condition"));
 
-        // NOTE(vak): For loop condition
+        PostIteration = ParseExpression();
 
-        Node->ForCond = ParseExpression();
+        ParserExpectAndSkip(')', Str("expected ')' after for-loop post-iteration"));
 
-        if (!NextIfMatchToken(';'))
-        {
-            Println(Str("ERROR: expected ';' after for loop conditional"));
-            Exit(1);
-        }
+        Body = ParseStatement();
 
-        // NOTE(vak): For loop iteration update
-
-        Node->ForIter = ParseExpression();
-
-        if (!NextIfMatchToken(')'))
-        {
-            Println(Str("ERROR: missing ')' in for loop"));
-            Exit(1);
-        }
-
-        Node->ForBody = ParseStatement();
+        Result = PushForNode(FirstToken, Initializer, Condition, PostIteration, Body);
     }
     else if (NextIfMatchToken(TokenKind_While))
     {
-        Node = AllocateNode(NodeKind_For, Token);
+        ParserExpectAndSkip('(', Str("expected '(' after 'while'"));
 
-        if (!MatchToken('('))
-        {
-            Println(Str("ERROR: expected '(' after while"));
-            Exit(1);
-        }
+        node_id Initializer     = NilNodeID;
+        node_id Condition       = NilNodeID;
+        node_id PostIteration   = NilNodeID;
+        node_id Body            = NilNodeID;
 
-        Node->ForCond = ParseExpression();
-        Node->ForBody = ParseStatement();
+        Condition = ParseExpression();
+
+        ParserExpectAndSkip(')', Str("expected ')' after while-loop condition"));
+
+        Body = ParseStatement();
+
+        Result = PushForNode(FirstToken, Initializer, Condition, PostIteration, Body);
     }
     else if (NextIfMatchToken(TokenKind_Do))
     {
-        Node = AllocateNode(NodeKind_For, Token);
+        node_id Initializer     = NilNodeID;
+        node_id Condition       = NilNodeID;
+        node_id PostIteration   = NilNodeID;
+        node_id Body            = NilNodeID;
 
-        Node->ForBody = ParseStatement();
-        Node->ForInit = Node->ForBody;
+        Body = ParseExpression();
+        Initializer = Body; // TODO(vak): Get rid of this cheap hack!
 
-        if (!NextIfMatchToken(TokenKind_While))
-        {
-            Println(Str("ERROR: missing 'while' in do-while loop"));
-            Exit(1);
-        }
+        ParserExpectAndSkip(TokenKind_While, Str("expected 'while' after body in do-while loop"));
+        ParserExpectAndSkip('(', Str("expected '(' after 'while'"));
 
-        if (!MatchToken('('))
-        {
-            Println(Str("ERROR: expected '(' after while"));
-            Exit(1);
-        }
+        Condition = ParseExpression();
 
-        Node->ForCond = ParseExpression();
+        ParserExpectAndSkip(')', Str("expected ')' after while-loop condition"));
 
-        if (!NextIfMatchToken(';'))
-        {
-            Println(Str("ERROR: expected ';' at end of do-while loop"));
-            Exit(1);
-        }
+        Result = PushForNode(FirstToken, Initializer, Condition, PostIteration, Body);
     }
     else if (NextIfMatchToken(TokenKind_Break))
     {
-        Node = AllocateNode(NodeKind_Break, Token);
+        Result = PushNode(NodeKind_Break, FirstToken);
     }
     else if (NextIfMatchToken(TokenKind_Continue))
     {
-        Node = AllocateNode(NodeKind_Continue, Token);
+        Result = PushNode(NodeKind_Continue, FirstToken);
     }
-    else if (MatchToken('{'))
+    else if (NextIfMatchToken(TokenKind_Return))
     {
-        Node = ParseBlock();
+        node_id Value = ParseExpression();
+
+        ParserExpectAndSkip(';', Str("expected ';' at end of statement"));
+
+        Result = PushReturnNode(FirstToken, Value);
     }
     else
     {
-        Node = ParseExpression();
+        Result = ParseExpression();
 
-        if (!NextIfMatchToken(';'))
-        {
-            Println(Str("ERROR: expected ';' at end of statement"));
-            Exit(1);
-        }
+        ParserExpectAndSkip(';', Str("expected ';' at end of statement"));
     }
 
-    return (Node);
+    return (Result);
 }
 
-local node* Parse(void)
+local node_list Parse(void)
 {
-    node* First = 0;
-    node* Last = 0;
+    node_list List = NilNodeList;
 
     while (!MatchToken(TokenKind_EOF))
-    {
-        node* Statement = ParseStatement();
-        if (!Statement)
-            continue;
+        AppendNodeList(&List, ParseStatement());
 
-        if (!First)
+    return (List);
+}
+
+local void PrintNodeList(node_list List);
+
+local void PrintNode(node_id NodeID)
+{
+    persist usize Depth = 0;
+
+    Depth++;
+
+    persist string NodeKindNames[] =
+    {
+        #define DefineNodeKindName(Name) StaticStr(#Name),
+            AllNodeKinds(DefineNodeKindName)
+        #undef DefineNodeKindName
+    };
+
+    node* Node = GetNode(NodeID);
+
+    for (usize Index = 1; Index < Depth; Index++)
+        Print(Str("    "));
+
+    Print(NodeKindNames[Node->Kind]);
+    Print(Str(": "));
+
+    switch (Node->Kind)
+    {
+        default: PrintNewLine(); break;
+
+        case NodeKind_Integer:
         {
-            First = Statement;
-            Last = Statement;
-        }
-        else
+            PrintUSize(Node->Integer.Value);
+            PrintNewLine();
+        } break;
+
+        case NodeKind_Identifier:
         {
-            Last->Next = Statement;
-            Last = Statement;
-        }
+            Print(Node->Identifier.Value);
+            PrintNewLine();
+        } break;
+
+        #define DefineNodeKindCase(Name) case NodeKind_##Name:
+
+        AllUnaryNodeKinds(DefineNodeKindCase)
+        {
+            PrintNewLine();
+            PrintNode(Node->Unary.Operand);
+        } break;
+
+        AllBinaryNodeKinds(DefineNodeKindCase)
+        {
+            PrintNewLine();
+            PrintNode(Node->Binary.Left);
+            PrintNode(Node->Binary.Right);
+        } break;
+
+        #undef DefineNodeKindCase
+
+        case NodeKind_If:
+        {
+            PrintNewLine();
+            PrintNode(Node->If.Condition);
+            PrintNode(Node->If.Then);
+            PrintNode(Node->If.Else);
+        } break;
+
+        case NodeKind_For:
+        {
+            PrintNewLine();
+            PrintNode(Node->For.Initializer);
+            PrintNode(Node->For.Condition);
+            PrintNode(Node->For.PostIteration);
+            PrintNode(Node->For.Body);
+        } break;
+
+        case NodeKind_Return:
+        {
+            PrintNewLine();
+            PrintNode(Node->Return.Value);
+        } break;
+
+        case NodeKind_Ternary:
+        {
+            PrintNewLine();
+            PrintNode(Node->Ternary.Left);
+            PrintNode(Node->Ternary.Middle);
+            PrintNode(Node->Ternary.Right);
+        } break;
+
+        case NodeKind_Block:
+        {
+            PrintNewLine();
+            PrintNodeList(Node->Block.Statements);
+        } break;
     }
 
-    return (First);
+    Depth--;
+}
+
+local void PrintNodeList(node_list List)
+{
+    for (
+        node_id Current = List.First;
+        Current != NilNodeID;
+    )
+    {
+        PrintNode(Current);
+
+        node* Node = GetNode(Current);
+        Current = Node->Next;
+    }
 }
 

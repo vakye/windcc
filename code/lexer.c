@@ -48,6 +48,9 @@ enum
     TokenKind_Do                    = 'K', // NOTE(vak): "do"
     TokenKind_Break                 = 'L', // NOTE(vak): "break"
     TokenKind_Continue              = 'M', // NOTE(vak): "continue"
+    TokenKind_Return                = 'N', // NOTE(vak): "return"
+
+    TokenKind_COUNT                 = U8Max,
 };
 
 typedef struct token token;
@@ -244,6 +247,7 @@ local token_kind TokenizeIdentifier(void)
         { TokenKind_Do,             StaticStr("do") },
         { TokenKind_Break,          StaticStr("break") },
         { TokenKind_Continue,       StaticStr("continue") },
+        { TokenKind_Return,         StaticStr("return") },
     };
 
     usize Size = Lexer.Index - From;
@@ -382,16 +386,23 @@ local void NextToken(void)
     Lexer.CurrentToken = Token;
 }
 
+local string TokenToString(token Token)
+{
+    string Result = Token.String;
+    return (Result);
+}
+
 local usize TokenToInteger(token Token)
 {
     // NOTE(vak): Assuming Token->Kind == TokenKind_Integer
 
     usize Result = 0;
 
-    for (usize Index = 0; Index < Token.String.Size; Index++)
+    string Digits = TokenToString(Token);
+    for (usize Index = 0; Index < Digits.Size; Index++)
     {
         Result *= 10;
-        Result += (Token.String.Data[Index] - '0');
+        Result += (Digits.Data[Index] - '0');
     }
 
     return (Result);

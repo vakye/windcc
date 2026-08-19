@@ -7,6 +7,9 @@ local ssize CompileAndRun(string Code, string MainFunction)
 {
     EquipLexerCode(Code);
 
+#if 1
+    return (0);
+#else
     node* RootNode = Parse();
 
     gen_result GenResult = Generate(0, 0, RootNode, MainFunction);
@@ -24,6 +27,7 @@ local ssize CompileAndRun(string Code, string MainFunction)
     UnmapExecutableMemory((void*)MappedProgram, GenResult.CodeSize);
 
     return (ProgramResult);
+#endif
 }
 
 typedef struct
@@ -49,6 +53,15 @@ local usize RightPadOutput(usize Written, usize Padding)
 
 local void Main(void)
 {
+#if 1
+    string Code = Str("d -= b = a += 10;");
+
+    EquipLexerCode(Code);
+
+    node_list List = Parse();
+
+    PrintNodeList(List);
+#else
     // NOTE(vak): Simple test cases involving expressions and
     // a few statements.
 
@@ -265,5 +278,6 @@ local void Main(void)
     PrintNewLine();
 
     PrintNewLine();
+#endif
 }
 
