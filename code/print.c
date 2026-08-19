@@ -66,3 +66,11 @@ local usize PrintSSize(ssize Value)
     return (Result);
 }
 
+local usize RightPadOutput(usize Written, usize Padding)
+{
+    while (Written < Padding)
+        Written += PrintCharacter(' ');
+
+    return (Written);
+}
+

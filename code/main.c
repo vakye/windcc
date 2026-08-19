@@ -43,24 +43,32 @@ typedef struct
     string MainFunction;
 } test_case2;
 
-local usize RightPadOutput(usize Written, usize Padding)
-{
-    while (Written < Padding)
-        Written += PrintCharacter(' ');
-
-    return (Written);
-}
-
 local void Main(void)
 {
 #if 1
-    string Code = Str("d -= b = a += 10;");
+    string Code = Str("120 / 2*(10 + 10);");
 
     EquipLexerCode(Code);
 
     node_list List = Parse();
+    ir_block Block = GenerateIR(List);
 
+    PrintNewLine();
+    Println(Str("=================================================================================="));
+    Println(Str("Parser output"));
+    Println(Str("=================================================================================="));
+    PrintNewLine();
     PrintNodeList(List);
+
+    PrintNewLine();
+    Println(Str("=================================================================================="));
+    Print(Str("IR output (TempRegisterCount="));
+    PrintUSize(Block.TempRegisterCount);
+    Print(Str(")\n"));
+    Println(Str("=================================================================================="));
+    PrintNewLine();
+    PrintBlockIR(Block);
+    PrintNewLine();
 #else
     // NOTE(vak): Simple test cases involving expressions and
     // a few statements.

@@ -4,6 +4,7 @@
 #include "print.c"
 #include "lexer.c"
 #include "parser.c"
+#include "intermediate.c"
 #include "generator.c"
 #include "main.c"
 
