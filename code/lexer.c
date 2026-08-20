@@ -1,5 +1,13 @@
 
+// ==========================================================================================
+// NOTE(vak): Compiler lexer: Converts a string into a sequence of tokens for the parser.
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Interface
+// ==========================================================================================
 
 typedef u8 token_kind;
 enum
@@ -58,6 +66,16 @@ struct token
     token* Next;
 };
 
+local void EquipLexerCode(string Code);
+local token GetCurrentToken(void);
+local b32 MatchToken(token_kind Kind);
+local b32 NextIfMatchToken(token_kind Kind);
+local void NextToken(void);
+
+// ==========================================================================================
+// NOTE(vak): Implementation
+// ==========================================================================================
+
 typedef struct
 {
     string Code;
@@ -66,8 +84,6 @@ typedef struct
 } lexer;
 
 local lexer Lexer = {0};
-
-local void NextToken(void);
 
 local void EquipLexerCode(string Code)
 {

@@ -1,5 +1,32 @@
 
+// ==========================================================================================
+// NOTE(vak): Linux implementation of platform.c
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Standard file numbers
+// ==========================================================================================
+
+#define STDOUT_FILENO (1)
+#define STDERR_FILENO (2)
+
+// ==========================================================================================
+// NOTE(vak): Memory map constants
+// ==========================================================================================
+
+#define PROT_NONE   (0x00)
+#define PROT_READ   (0x01)
+#define PROT_WRITE  (0x02)
+#define PROT_EXEC   (0x04)
+
+#define MAP_PRIVATE     (0x02)
+#define MAP_ANONYMOUS   (0x20)
+
+// ==========================================================================================
+// NOTE(vak): System call
+// ==========================================================================================
 
 typedef enum
 {
@@ -13,17 +40,6 @@ typedef enum
 #error Linux syscall numbers are not defined for this architecture
 #endif
 } syscall_number;
-
-#define STDOUT_FILENO (1)
-#define STDERR_FILENO (2)
-
-#define PROT_NONE   (0x00)
-#define PROT_READ   (0x01)
-#define PROT_WRITE  (0x02)
-#define PROT_EXEC   (0x04)
-
-#define MAP_PRIVATE     (0x02)
-#define MAP_ANONYMOUS   (0x20)
 
 local usize LinuxSyscall(
     syscall_number SyscallNumber,
@@ -56,6 +72,10 @@ local usize LinuxSyscall(
 
     return (Result);
 }
+
+// ==========================================================================================
+// NOTE(vak): Memory
+// ==========================================================================================
 
 local void* ReserveMemory(usize Size)
 {
@@ -125,6 +145,10 @@ local void UnmapExecutableMemory(void* Memory, usize Size)
         Exit(-UnmapResult);
 }
 
+// ==========================================================================================
+// NOTE(vak): Console
+// ==========================================================================================
+
 local usize WriteStdOut(void* Data, usize Size)
 {
     ssize BytesWritten = (ssize)LinuxSyscall(
@@ -152,6 +176,10 @@ local usize WriteStdErr(void* Data, usize Size)
     usize Result = Maximum(0, BytesWritten);
     return (Result);
 }
+
+// ==========================================================================================
+// NOTE(vak): Process control
+// ==========================================================================================
 
 local void Exit(u8 ExitCode)
 {

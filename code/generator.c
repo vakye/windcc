@@ -1,13 +1,50 @@
 
-// NOTE(vak): Assembly code generator
+// ==========================================================================================
+// NOTE(vak): Assembly code generator: Follows right after the Parser and directly emits
+// x64 assembly code from the nodes of a syntax tree.
+// ==========================================================================================
 
-//      + Follows right after the Parser and directly emits x64 assembly code
-//        from nodes.
+#pragma once
 
-//      + Currently, it generates inefficient x64 assembly code which
+// ==========================================================================================
+// NOTE(vak): Interface
+// ==========================================================================================
+
+typedef struct
+{
+    void* MachineCode;  // NOTE(vak): Base address of generated machine code
+    usize EntryOffset;  // NOTE(vak): Entry point byte offset (call (u8*)MachineCode + EntryOffset)
+    usize CodeSize;     // NOTE(vak): Size of generated machine code in bytes.
+} gen_result;
+
+// NOTE(vak): Generates complete x64 assembly code from a parsed program.
+//      RootNode:
+//              + Root node that is obtained from the parser
+//
+//      MainFunctionName:
+//              + if NilString: No main function specified, treat RootNode as if it were inside a function
+//                              and generate.
+//              + else:         Main function name is specified, so look for functions and generate them.
+//                              After generation, look for the main function and set the entry point offset.
+//
+// Example usage:
+//      node* Node = ...
+//      gen_result GenResult = Generate(Node, MyMainFunctionName);
+//
+//      u8* ExecutableMemory = MapExecutableMemory(GenResult.MachineCode, GenResult.CodeSize);
+//      ssize WhateverResult = CallInstruction(ExecutableMemory + GenResult.EntryOffset);
+//
+// where MapExecutableMemory() and CallInstruction() and provided by the user.
+
+local gen_result Generate(node* RootNode, string MainFunctionName);
+
+// ==========================================================================================
+// NOTE(vak): Implementation
+
+//      + Currently, the code generator generates inefficient x64 assembly code which
 //        utilizes only three registers for evaluation: RAX, RCX, and RDX.
 
-//      + The assembly code it generates follow a stack-machine style
+//      + The assembly code generated follows a stack-machine style
 //        of evaluation. Results are always stored in RAX, and if a
 //        node wishes to save a result then it must push RAX to the
 //        stack and pop it back into some other register (RCX, RDX, ...).
@@ -16,20 +53,22 @@
 
 //      + The code generator supports labels and REL32 offsets. REL32 offsets
 //        are reserved 32-bit offsets in the code that acts as a signed displacement
-//        a label. A label can be allocated, and its offset can be placed at any
+//        pointing to a label.
+
+//      + A label can be allocated, and its offset can be placed at any
 //        arbitrary point within the code. After code generation is finished,
 //        the code generator will go through all REL32 offsets and fill in the
-//        compute displacements.
+//        computed displacements.
 
 //      + Symbols are managed via a linked list that also acts as a stack.
 //        When a new symbol is added, it will be added at the end of the list.
 //        When entering a scope, the current last symbol is recorded as a
-//        restore point. Upon exiting the scope, everything from the restore
+//        restoration point. Upon exiting the scope, everything from the restoration
 //        point onwards will be "popped" off the symbol linked list and onto
 //        the free list, thereby removing it entirely.
 //        See BeginScope() and EndScope() for more details.
 
-#pragma once
+// ==========================================================================================
 
 #define InvalidLabelOffset (USizeMax)
 
@@ -110,7 +149,7 @@ local void Emit64(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 8);
 
 local gen_label* AllocateLabel(void)
 {
-    if (!LabelArenaID)
+    if (IsNilArenaID(LabelArenaID))
         LabelArenaID = CreateArena(MB(1), GB(16));
 
     gen_label* Label = PushArena(LabelArenaID, gen_label);
@@ -125,7 +164,7 @@ local void PlaceLabel(gen_buffer* Gen, gen_label* Label)
 
 local void EmitRel32(gen_buffer* Gen, gen_label* Target)
 {
-    if (!Rel32ArenaID)
+    if (IsNilArenaID(Rel32ArenaID))
         Rel32ArenaID = CreateArena(MB(1), GB(16));
 
     gen_rel32* Rel32 = PushArena(Rel32ArenaID, gen_rel32);
@@ -150,7 +189,7 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
 
 local gen_symbol* AddSymbol(gen_buffer* Gen, gen_symbol_kind SymbolKind, string Name, type_spec TypeSpec)
 {
-    if (!SymbolArenaID)
+    if (IsNilArenaID(SymbolArenaID))
         SymbolArenaID = CreateArena(MB(1), GB(16));
 
     gen_symbol* Symbol = Gen->FirstFreeSymbol;
@@ -1368,33 +1407,9 @@ local void GenerateTopLevel(gen_buffer* Gen, node* Node)
     }
 }
 
-typedef struct
-{
-    void* MachineCode;  // NOTE(vak): Base address of generated machine code
-    usize EntryOffset;  // NOTE(vak): Entry point byte offset into the buffer
-    usize CodeSize;     // NOTE(vak): Size of generated code in bytes.
-} gen_result;
-
-// NOTE(vak): Generates complete x64 assembly code from a parsed program.
-
-//      Buffer, BufferSize:
-//              + If both are set to 0, then code generator will not emit code, and instead
-//                return the CodeSize that will be generated.
-//              + Otherwise, code generator will emit code. If BufferSize is not large enough
-//                then code generator will stop emitting code at the end of the buffer.
-
-//      RootNode:
-//              + Root node that is obtained from the parser
-
-//      MainFunctionName:
-//              + if NilString: No main function specified, treat RootNode as if it were inside a function
-//                              and generate.
-//              + else:         Main function name is specified, so look for functions and generate them.
-//                              After generation, look for the main function and set the entry point offset.
-
 local gen_result Generate(node* RootNode, string MainFunctionName)
 {
-    if (!CodeArenaID)
+    if (IsNilArenaID(CodeArenaID))
         CodeArenaID = CreateArena(MB(1), GB(16));
 
     gen_buffer Gen =

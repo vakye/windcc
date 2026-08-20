@@ -1,10 +1,25 @@
 
+// ==========================================================================================
+// NOTE(vak): A collection of memory management structures and functions.
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Interface
+// ==========================================================================================
 
 #define ArenaGranuleSize MB(1)
 
-typedef u32 arena_id;
-#define NilArenaID (0)
+typedef union
+{
+    u32 U32[1];
+    u16 U16[2];
+    u8  U8 [4];
+} arena_id;
+
+#define NilArenaID (arena_id){0}
+#define IsNilArenaID(ArenaID) ((ArenaID).U32[0] == 0)
 
 typedef struct
 {
@@ -14,15 +29,27 @@ typedef struct
     usize Reserved;
 } arena;
 
+local arena_id CreateArena(usize MinCommited, usize MinReserved);
+local void ResetArena(arena_id ArenaID);
+local void* GetArenaAllocationPointer(arena_id ArenaID);
+local void* PushArenaSize(arena_id ArenaID, usize Size);
+
+#define PushArena(ArenaID, Type)                (Type*)PushArenaSize(ArenaID, sizeof(Type))
+#define PushArenaArray(ArenaID, Type, Count)    (Type*)PushArenaSize(ArenaID, sizeof(Type) * (Count))
+
+// ==========================================================================================
+// NOTE(vak): Implementation
+// ==========================================================================================
+
 local arena Arenas[32] = {0};
 local u32 ArenaCount = 0;
 
 local arena* GetArena(arena_id ArenaID)
 {
-    AlwaysAssert(ArenaID > NilArenaID);
-    AlwaysAssert(ArenaID < ArenaCount + 1);
+    AlwaysAssert(ArenaID.U32[0] > 0);
+    AlwaysAssert(ArenaID.U32[0] < ArenaCount + 1);
 
-    arena* Arena = Arenas + (ArenaID - 1);
+    arena* Arena = Arenas + (ArenaID.U32[0] - 1);
     return (Arena);
 }
 
@@ -30,7 +57,7 @@ local arena_id CreateArena(usize MinCommited, usize MinReserved)
 {
     AlwaysAssert(ArenaCount < ArrayCount(Arenas));
 
-    arena_id ArenaID = 1 + ArenaCount;
+    arena_id ArenaID = {.U32[0] = 1 + ArenaCount};
     ArenaCount++;
 
     arena* Arena = GetArena(ArenaID);
@@ -61,9 +88,6 @@ local void* GetArenaAllocationPointer(arena_id ArenaID)
     void* Result = (u8*)Arena->Base + Arena->Used;
     return (Result);
 }
-
-#define PushArena(ArenaID, Type)                (Type*)PushArenaSize(ArenaID, sizeof(Type))
-#define PushArenaArray(ArenaID, Type, Count)    (Type*)PushArenaSize(ArenaID, sizeof(Type) * (Count))
 
 local void* PushArenaSize(arena_id ArenaID, usize Size)
 {

@@ -1,5 +1,13 @@
 
+// ==========================================================================================
+// NOTE(vak): A collection of definitions that are commonly used throughout the codebase.
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Platform detection
+// ==========================================================================================
 
 #if defined(_WIN32) || defined(_WIN64)
 #define PlatformWindows (1)
@@ -17,6 +25,10 @@
 #define PlatformLinux (0)
 #endif
 
+// ==========================================================================================
+// NOTE(vak): Architecture detection
+// ==========================================================================================
+
 #if defined(__amd64__) || defined(__amd64) || defined(__x86_64__) || defined(__x86_64) || defined(_M_X64) || defined(_M_AMD64)
 #define ArchitectureX64 (1)
 #else
@@ -27,8 +39,12 @@
 #define ArchitectureX64 (0)
 #endif
 
-#define local static
-#define persist static
+// ==========================================================================================
+// NOTE(vak): Keywords
+// ==========================================================================================
+
+#define local static    // NOTE(vak): Marks a function or variable as being private to this program (not exported)
+#define persist static  // NOTE(vak): Marks a variable as having persistent storage that retains its value even after the function returns.
 
 #define CTAssert(Expression) _Static_assert(Expression, "Compile-time assertion failed")
 
@@ -46,6 +62,10 @@
 
 #define AlignUp(Value, PowerOf2) (((Value) + (PowerOf2) - 1) & ~((PowerOf2) - 1))
 
+// ==========================================================================================
+// NOTE(vak): Integer types
+// ==========================================================================================
+
 typedef signed char s8;
 typedef signed short s16;
 typedef signed int s32;
@@ -59,11 +79,23 @@ typedef unsigned long long u64;
 typedef s64 ssize;
 typedef u64 usize;
 
+// ==========================================================================================
+// NOTE(vak): Floating point types
+// ==========================================================================================
+
 typedef float f32;
 typedef double f64;
 
+// ==========================================================================================
+// NOTE(vak): Boolean types
+// ==========================================================================================
+
 typedef u8 b8;
 typedef u32 b32;
+
+// ==========================================================================================
+// NOTE(vak): Constants
+// ==========================================================================================
 
 #define true  (1)
 #define false (0)
@@ -88,6 +120,10 @@ typedef u32 b32;
 #define USizeBits (sizeof(usize) * 8)
 #define USizeMax  (~((usize)0))
 
+// ==========================================================================================
+// NOTE(vak): Type size checks
+// ==========================================================================================
+
 CTAssert(sizeof(s8)  == 1);
 CTAssert(sizeof(s16) == 2);
 CTAssert(sizeof(s32) == 4);
@@ -103,6 +139,13 @@ CTAssert(sizeof(usize) == sizeof(void*));
 
 CTAssert(sizeof(f32) == 4);
 CTAssert(sizeof(f64) == 8);
+
+// ==========================================================================================
+// NOTE(vak): Memory
+// ==========================================================================================
+
+// NOTE(vak): We specified that we don't want to use the CRT, so the compiler expects
+// us to provide memset and memcpy. That is why we have to implement it ourselves here.
 
 void* memset(void* DestInit, s32 Byte, usize Size)
 {
@@ -131,6 +174,10 @@ void* memcpy(void* DestInit, void* SourceInit, usize Size)
 local void ZeroMemory(void* DestInit, usize Size)                   { memset(DestInit, 0, Size); }
 local void FillMemory(void* DestInit, u8 Byte, usize Size)          { memset(DestInit, Byte, Size); }
 local void CopyMemory(void* DestInit, void* SourceInit, usize Size) { memcpy(DestInit, SourceInit, Size); }
+
+// ==========================================================================================
+// NOTE(vak): String
+// ==========================================================================================
 
 typedef struct
 {

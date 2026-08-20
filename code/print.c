@@ -1,5 +1,24 @@
 
+// ==========================================================================================
+// NOTE(vak): Printing functions for characters, strings, integers, ...
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Interface
+// ==========================================================================================
+
+local usize PrintCharacter(char Character);
+local usize PrintNewLine(void);
+local usize Print(string Message);
+local usize Println(string Message);
+local usize PrintUSize(usize Value);
+local usize PrintSSize(ssize Value);
+
+// ==========================================================================================
+// NOTE(vak): Implementation
+// ==========================================================================================
 
 local usize PrintCharacter(char Character)
 {

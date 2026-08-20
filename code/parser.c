@@ -1,5 +1,18 @@
 
+// ==========================================================================================
+// NOTE(vak): Compiler parser: Converts a sequence of tokens into a syntax tree composed of
+// operations. This syntax tree is then fed into the code generator for conversion into
+// machine code.
+// ==========================================================================================
+
 #pragma once
+
+// ==========================================================================================
+// NOTE(vak): Interface
+// ==========================================================================================
+
+// TODO(vak): Properly document node kinds and their usage of the members of the node
+// structure. It is an absolute mess right now...
 
 typedef enum
 {
@@ -102,12 +115,37 @@ struct node
     node* ForBody;
 };
 
+// NOTE(vak): The sequence of tokens the parser receives can be set with EquipLexerCode(Code).
+// Example usage:
+//
+//      string Code = Str("10 + 10");
+//      EquipLexerCode(Code);
+//      node* Node = Parse();
+//
+// will parse the code string "10 + 10" into a NodeKind_Add composed of two NodeKind_Integer
+
+// TODO(vak): Make it so that the Parse() function can perhaps receive a lexer_id handle, so
+// as to support multiple token streams instead of being confined to just using EquipLexerCode(),
+// which is just a single token stream.
+
+local node* Parse(void); 
+
+// NOTE(vak): More primitive parsing functions
+
+local node* ParseExpression(void);
+local node* ParseStatement(void);
+local node* ParseBlock(void);
+
+// ==========================================================================================
+// NOTE(vak): Implementation
+// ==========================================================================================
+
 local arena_id NodeArenaID = NilArenaID; // NOTE(vak): Array of node
 local arena_id TypeArenaID = NilArenaID; // NOTE(vak): Array of type_spec
 
 local node* AllocateNode(node_kind Kind, token Token)
 {
-    if (!NodeArenaID)
+    if (IsNilArenaID(NodeArenaID))
         NodeArenaID = CreateArena(MB(1), GB(16));
 
     node* Node = PushArena(NodeArenaID, node);
@@ -139,7 +177,7 @@ local node* AllocateBinaryNode(node_kind Kind, token Token, node* Left, node* Ri
 
 local type_spec* AllocateTypeSpec(type_spec_kind Kind)
 {
-    if (!TypeArenaID)
+    if (IsNilArenaID(TypeArenaID))
         TypeArenaID = CreateArena(MB(16), GB(16));
 
     type_spec* TypeSpec = PushArena(TypeArenaID, type_spec);
@@ -149,8 +187,6 @@ local type_spec* AllocateTypeSpec(type_spec_kind Kind)
 
     return (TypeSpec);
 }
-
-local node* ParseExpression(void);
 
 local node* ParsePrimary(void)
 {
@@ -600,9 +636,6 @@ local node* ParseExpression(void)
     node* Node = ParseAssignment();
     return (Node);
 }
-
-local node* ParseStatement(void);
-local node* ParseBlock(void);
 
 local node* ParseDeclaration(type_spec TypeSpec)
 {
