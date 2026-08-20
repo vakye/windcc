@@ -71,6 +71,7 @@ local token GetCurrentToken(void);
 local b32 MatchToken(token_kind Kind);
 local b32 NextIfMatchToken(token_kind Kind);
 local void NextToken(void);
+local usize TokenToInteger(token Token);
 
 // ==========================================================================================
 // NOTE(vak): Implementation

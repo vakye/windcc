@@ -16,6 +16,8 @@ local usize Println(string Message);
 local usize PrintUSize(usize Value);
 local usize PrintSSize(ssize Value);
 
+local usize RightPadOutput(usize Written, usize Padding);
+
 // ==========================================================================================
 // NOTE(vak): Implementation
 // ==========================================================================================
@@ -83,5 +85,13 @@ local usize PrintSSize(ssize Value)
     Result += PrintUSize(Value);
 
     return (Result);
+}
+
+local usize RightPadOutput(usize Written, usize Padding)
+{
+    while (Written < Padding)
+        Written += PrintCharacter(' ');
+
+    return (Written);
 }
 
