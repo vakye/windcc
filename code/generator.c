@@ -71,7 +71,6 @@ typedef struct
 typedef struct
 {
     u8* Base;
-    usize Size;
     usize Used;
     usize StackSize;
 
@@ -87,18 +86,17 @@ typedef struct
     gen_label* ReturnLabel;
 } gen_buffer;
 
+local arena_id CodeArenaID = NilArenaID;   // NOTE(vak): Machine code storage
+local arena_id LabelArenaID = NilArenaID;  // NOTE(vak): Array of gen_label
+local arena_id Rel32ArenaID = NilArenaID;  // NOTE(vak): Array of gen_rel32
+local arena_id SymbolArenaID = NilArenaID; // NOTE(vak): Array of gen_symbol
+
 local void EmitBytes(gen_buffer* Buffer, void* Bytes, usize Size)
 {
-    if (Buffer->Base == 0)
-    {
-        // NOTE(vak): No code generation, only retrieve size of code that will be generated
-        Buffer->Used += Size;
-    }
-    else if (Buffer->Used + Size <= Buffer->Size)
-    {
-        CopyMemory(Buffer->Base + Buffer->Used, Bytes, Size);
-        Buffer->Used += Size;
-    }
+    void* WriteAt = PushArenaSize(CodeArenaID, Size);
+
+    CopyMemory(WriteAt, Bytes, Size);
+    Buffer->Used += Size;
 }
 
 local void Emit8 (gen_buffer* Buffer, u8  Value) { EmitBytes(Buffer, &Value, 1); }
@@ -112,7 +110,10 @@ local void Emit64(gen_buffer* Buffer, u64 Value) { EmitBytes(Buffer, &Value, 8);
 
 local gen_label* AllocateLabel(void)
 {
-    gen_label* Label = Allocate(sizeof(gen_label));
+    if (!LabelArenaID)
+        LabelArenaID = CreateArena(MB(1), GB(16));
+
+    gen_label* Label = PushArena(LabelArenaID, gen_label);
     Label->Offset = InvalidLabelOffset;
     return (Label);
 }
@@ -124,7 +125,10 @@ local void PlaceLabel(gen_buffer* Gen, gen_label* Label)
 
 local void EmitRel32(gen_buffer* Gen, gen_label* Target)
 {
-    gen_rel32* Rel32 = Allocate(sizeof(gen_rel32));
+    if (!Rel32ArenaID)
+        Rel32ArenaID = CreateArena(MB(1), GB(16));
+
+    gen_rel32* Rel32 = PushArena(Rel32ArenaID, gen_rel32);
     ZeroType(Rel32);
 
     Rel32->Target = Target;
@@ -146,11 +150,14 @@ local void EmitRel32(gen_buffer* Gen, gen_label* Target)
 
 local gen_symbol* AddSymbol(gen_buffer* Gen, gen_symbol_kind SymbolKind, string Name, type_spec TypeSpec)
 {
+    if (!SymbolArenaID)
+        SymbolArenaID = CreateArena(MB(1), GB(16));
+
     gen_symbol* Symbol = Gen->FirstFreeSymbol;
 
     if (!Symbol)
     {
-        Symbol = Allocate(sizeof(gen_symbol));
+        Symbol = PushArena(SymbolArenaID, gen_symbol);
     }
     else
     {
@@ -1301,16 +1308,13 @@ local void GenerateFunctionBody(gen_buffer* Gen, gen_symbol* FunctionSymbol, nod
 
     // NOTE(vak): Write in stack size
 
-    if (Gen->Size)
+    if (Gen->StackSize > S32Max)
     {
-        if (Gen->StackSize > S32Max)
-        {
-            Println(Str("ERROR: stack size exceeds 32-bit signed integer max"));
-            Exit(1);
-        }
-
-        *WriteStackSize = Gen->StackSize;
+        Println(Str("ERROR: stack size exceeds 32-bit signed integer max"));
+        Exit(1);
     }
+
+    *WriteStackSize = Gen->StackSize;
 
     Gen->ReturnLabel = 0;
 }
@@ -1366,6 +1370,7 @@ local void GenerateTopLevel(gen_buffer* Gen, node* Node)
 
 typedef struct
 {
+    void* MachineCode;  // NOTE(vak): Base address of generated machine code
     usize EntryOffset;  // NOTE(vak): Entry point byte offset into the buffer
     usize CodeSize;     // NOTE(vak): Size of generated code in bytes.
 } gen_result;
@@ -1387,15 +1392,21 @@ typedef struct
 //              + else:         Main function name is specified, so look for functions and generate them.
 //                              After generation, look for the main function and set the entry point offset.
 
-local gen_result Generate(void* Buffer, usize BufferSize, node* RootNode, string MainFunctionName)
+local gen_result Generate(node* RootNode, string MainFunctionName)
 {
+    if (!CodeArenaID)
+        CodeArenaID = CreateArena(MB(1), GB(16));
+
     gen_buffer Gen =
     {
-        .Base = Buffer,
-        .Size = BufferSize,
+        .Base = GetArenaAllocationPointer(CodeArenaID),
+        .Used = 0,
     };
 
-    gen_result Result = {0};
+    gen_result Result =
+    {
+        .MachineCode = Gen.Base,
+    };
 
     if (MainFunctionName.Size)
     {
@@ -1464,11 +1475,8 @@ local gen_result Generate(void* Buffer, usize BufferSize, node* RootNode, string
             Exit(1);
         }
 
-        if (Gen.Size)
-        {
-            s32* WriteAt = (s32*)(Gen.Base + Rel32->Offset);
-            *WriteAt = (s32)Disp;
-        }
+        s32* WriteAt = (s32*)(Gen.Base + Rel32->Offset);
+        *WriteAt = (s32)Disp;
     }
 
     return (Result);

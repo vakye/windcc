@@ -1,6 +1,7 @@
 
 #include "shared.c"
 #include "platform.c"
+#include "memory.c"
 #include "print.c"
 #include "lexer.c"
 #include "parser.c"

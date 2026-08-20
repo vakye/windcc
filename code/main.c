@@ -9,12 +9,9 @@ local ssize CompileAndRun(string Code, string MainFunction)
 
     node* RootNode = Parse();
 
-    gen_result GenResult = Generate(0, 0, RootNode, MainFunction);
-    void* Assembly = Allocate(GenResult.CodeSize);
+    gen_result GenResult = Generate(RootNode, MainFunction);
 
-    Generate(Assembly, GenResult.CodeSize, RootNode, MainFunction);
-
-    void* MappedProgram = MapExecutableMemory(Assembly, GenResult.CodeSize);
+    void* MappedProgram = MapExecutableMemory(GenResult.MachineCode, GenResult.CodeSize);
 
     program_entry_point* ProgramEntry = (program_entry_point*)
         ((u8*)MappedProgram + GenResult.EntryOffset);

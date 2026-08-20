@@ -102,9 +102,15 @@ struct node
     node* ForBody;
 };
 
+local arena_id NodeArenaID = NilArenaID; // NOTE(vak): Array of node
+local arena_id TypeArenaID = NilArenaID; // NOTE(vak): Array of type_spec
+
 local node* AllocateNode(node_kind Kind, token Token)
 {
-    node* Node = Allocate(sizeof(node));
+    if (!NodeArenaID)
+        NodeArenaID = CreateArena(MB(1), GB(16));
+
+    node* Node = PushArena(NodeArenaID, node);
 
     ZeroType(Node);
     Node->Kind = Kind;
@@ -133,7 +139,10 @@ local node* AllocateBinaryNode(node_kind Kind, token Token, node* Left, node* Ri
 
 local type_spec* AllocateTypeSpec(type_spec_kind Kind)
 {
-    type_spec* TypeSpec = Allocate(sizeof(type_spec));
+    if (!TypeArenaID)
+        TypeArenaID = CreateArena(MB(16), GB(16));
+
+    type_spec* TypeSpec = PushArena(TypeArenaID, type_spec);
 
     ZeroType(TypeSpec);
     TypeSpec->Kind = Kind;
