@@ -7,6 +7,15 @@
 #pragma once
 
 // ==========================================================================================
+// NOTE(vak): Dependencies
+// ==========================================================================================
+
+#include "shared.c"
+#include "memory.c"
+#include "print.c"
+#include "character.c"
+
+// ==========================================================================================
 // NOTE(vak): Interface
 // ==========================================================================================
 
@@ -258,7 +267,7 @@ local void Tokenize(token_array_id TokenArrayID, string Code)
 
     if (Code.Size > U32Max)
     {
-        Println(StdErr, Str("ERROR: Code passed to compiler lexer is larger than 4GB (U32Max)"));
+        Println(StdErr, Str("ERROR: code passed to tokenizer is larger than 4GB (U32Max)"));
         Exit(1);
     }
 
