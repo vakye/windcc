@@ -7,9 +7,6 @@
 #include "platform.c"
 #include "memory.c"
 #include "print.c"
-#include "lexer.c"
-#include "parser.c"
-#include "test.c"
 #include "main.c"
 
 #if PlatformLinux
