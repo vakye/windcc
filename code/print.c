@@ -9,48 +9,71 @@
 // NOTE(vak): Interface
 // ==========================================================================================
 
-local usize PrintCharacter(char Character);
-local usize PrintNewLine(void);
-local usize Print(string Message);
-local usize Println(string Message);
-local usize PrintUSize(usize Value);
-local usize PrintSSize(ssize Value);
+typedef usize print_write(void* Data, usize Size, void* UserData);
 
-local usize RightPadOutput(usize Written, usize Padding);
+typedef struct
+{
+    print_write* Write;
+    void*        UserData;
+} print_out;
+
+#define StdNil (print_out){&NilPrintWrite, 0}
+#define StdOut (print_out){(print_write*)&WriteStdOut, 0}
+#define StdErr (print_out){(print_write*)&WriteStdErr, 0}
+
+local usize PrintCharacter  (print_out Out, char Character);
+local usize PrintNewLine    (print_out Out);
+local usize Print           (print_out Out, string Message);
+local usize Println         (print_out Out, string Message);
+local usize PrintUSize      (print_out Out, usize Value);
+local usize PrintSSize      (print_out Out, ssize Value);
+local void  RightPadOutput  (print_out Out, usize Written, usize Padding);
 
 // ==========================================================================================
 // NOTE(vak): Implementation
 // ==========================================================================================
 
-local usize PrintCharacter(char Character)
+local usize NilPrintWrite(void* Data, usize Size, void* UserData)
 {
-    usize Result = WriteStdOut(&Character, 1);
+    usize Result = Size;
     return (Result);
 }
 
-local usize PrintNewLine(void)
+local usize PrintWrite(print_out Out, void* Data, usize Size)
 {
-    usize Result = PrintCharacter('\n');
+    usize Result = Out.Write(Data, Size, Out.UserData);
     return (Result);
 }
 
-local usize Print(string Message)
+local usize PrintCharacter(print_out Out, char Character)
 {
-    usize Result = WriteStdOut(Message.Data, Message.Size);
+    usize Result = PrintWrite(Out, &Character, 1);
     return (Result);
 }
 
-local usize Println(string Message)
+local usize PrintNewLine(print_out Out)
+{
+    usize Result = PrintCharacter(Out, '\n');
+    return (Result);
+}
+
+local usize Print(print_out Out, string Message)
+{
+    usize Result = PrintWrite(Out, Message.Data, Message.Size);
+    return (Result);
+}
+
+local usize Println(print_out Out, string Message)
 {
     usize Result = 0;
 
-    Result += Print(Message);
-    Result += PrintNewLine();
+    Result += Print(Out, Message);
+    Result += PrintNewLine(Out);
 
     return (Result);
 }
 
-local usize PrintUSize(usize Value)
+local usize PrintUSize(print_out Out, usize Value)
 {
     char Buffer[USizeBits] = {0};
     usize DigitIndex = ArrayCount(Buffer);
@@ -67,31 +90,31 @@ local usize PrintUSize(usize Value)
         Buffer[DigitIndex] = Digit;
     } while (Value);
 
-    usize Result = Print(StrData(Buffer + DigitIndex, DigitCount));
+    usize Result = Print(Out, StrData(Buffer + DigitIndex, DigitCount));
 
     return (Result);
 }
 
-local usize PrintSSize(ssize Value)
+local usize PrintSSize(print_out Out, ssize Value)
 {
     usize Result = 0;
 
     if (Value < 0)
     {
-        Result += PrintCharacter('-');
+        Result += PrintCharacter(Out, '-');
         Value = -Value;
     }
 
-    Result += PrintUSize(Value);
+    Result += PrintUSize(Out, Value);
 
     return (Result);
 }
 
-local usize RightPadOutput(usize Written, usize Padding)
+local void RightPadOutput(print_out Out, usize Written, usize Padding)
 {
     while (Written < Padding)
-        Written += PrintCharacter(' ');
-
-    return (Written);
+    {
+        Written += PrintCharacter(Out, ' ');
+    }
 }
 

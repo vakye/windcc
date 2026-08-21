@@ -18,21 +18,23 @@ local void Main(void)
 
     Tokenize(TokenArrayID, Code);
 
-    Print(Str("Code = '"));
-    Println(Code);
+    Print(StdOut, Str("Code = '"));
+    Print(StdOut, Code);
+    Print(StdOut, Str("'"));
+    PrintNewLine(StdOut);
 
-    Println(Str("Tokenizer output:"));
+    Println(StdOut, Str("Tokenizer output:"));
 
     u32 TokenCount = GetTokenCount(TokenArrayID);
     for (token_id TokenID = 0; TokenID < TokenCount; TokenID++)
     {
-        Print(Str("    "));
-        Print(Str("TokenID = "));
-        RightPadOutput(PrintUSize(TokenID), 16);
-        Print(Str("String = '"));
-        Print(GetTokenString(TokenArrayID, TokenID));
-        Print(Str("'"));
-        PrintNewLine();
+        Print(StdOut, Str("    "));
+        Print(StdOut, Str("TokenID = "));
+        RightPadOutput(StdOut, PrintUSize(StdOut, TokenID), 16);
+        Print(StdOut, Str("String = '"));
+        Print(StdOut, GetTokenString(TokenArrayID, TokenID));
+        Print(StdOut, Str("'"));
+        PrintNewLine(StdOut);
     }
 }
 

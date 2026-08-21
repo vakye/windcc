@@ -9,8 +9,6 @@
 // NOTE(vak): Interface
 // ==========================================================================================
 
-#define ArenaGranuleSize MB(1)
-
 typedef union
 {
     u32 U32[1];
@@ -20,14 +18,6 @@ typedef union
 
 #define NilArenaID (arena_id){0}
 #define IsNilArenaID(ArenaID) ((ArenaID).U32[0] == 0)
-
-typedef struct
-{
-    void* Base;
-    usize Used;
-    usize Commited;
-    usize Reserved;
-} arena;
 
 local arena_id      CreateArena                 (usize MinCommited, usize MinReserved);
 local void          ResetArena                  (arena_id ArenaID);
@@ -42,6 +32,16 @@ local void*         PushArenaSize               (arena_id ArenaID, usize Size);
 // ==========================================================================================
 // NOTE(vak): Implementation
 // ==========================================================================================
+
+#define ArenaGranuleSize MB(1)
+
+typedef struct
+{
+    void* Base;
+    usize Used;
+    usize Commited;
+    usize Reserved;
+} arena;
 
 local arena Arenas[32] = {0};
 local u32 ArenaCount = 0;

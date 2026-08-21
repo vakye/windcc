@@ -41,7 +41,9 @@ local token_kind        GetTokenKind        (token_array_id TokenArrayID, token_
 local string            GetTokenString      (token_array_id TokenArrayID, token_id TokenID);
 local usize             GetTokenInteger     (token_array_id TokenArrayID, token_id TokenID);
 
-// NOTE(vak): Example usage:
+// ==========================================================================================
+// NOTE(vak): Example usage
+// ==========================================================================================
 //
 //      string Code = Str("int main () { __hello + world_23_() * (10 + 10) / 120; }");
 //
@@ -51,7 +53,7 @@ local usize             GetTokenInteger     (token_array_id TokenArrayID, token_
 //      u32 TokenCount = GetTokenCount(TokenArrayID);
 //      for (token_id TokenID = 0; TokenID < TokenCount; TokenID++)
 //      {
-//          Println(GetTokenString(TokenArrayID, TokenID));
+//          Println(StdOut, GetTokenString(TokenArrayID, TokenID));
 //
 //          token_kind TokenKind = GetTokenKind(TokenArrayID, TokenID);
 //          if (TokenKind == '+')
@@ -226,7 +228,7 @@ local void Tokenize(token_array_id TokenArrayID, string Code)
 
     if (Code.Size > U32Max)
     {
-        Println(Str("ERROR: Code passed to compiler lexer is larger than 4GB (U32Max)"));
+        Println(StdErr, Str("ERROR: Code passed to compiler lexer is larger than 4GB (U32Max)"));
         Exit(1);
     }
 
@@ -248,9 +250,9 @@ local void Tokenize(token_array_id TokenArrayID, string Code)
         else if (IsPunctuation(Character))      Token = TokenizePunctuation(Code, Index);
         else
         {
-            Print(Str("ERROR: unknown character '\\"));
-            PrintUSize((u8)Character);
-            Print(Str("'\n"));
+            Print(StdErr, Str("ERROR: unknown character '\\"));
+            PrintUSize(StdErr, (u8)Character);
+            Print(StdErr, Str("'\n"));
             Exit(1);
         }
 

@@ -149,7 +149,7 @@ local void UnmapExecutableMemory(void* Memory, usize Size)
 // NOTE(vak): Console
 // ==========================================================================================
 
-local usize WriteStdOut(void* Data, usize Size)
+local usize WriteStdOut(void* Data, usize Size, ...)
 {
     ssize BytesWritten = (ssize)LinuxSyscall(
         SyscallNumber_Write,
@@ -163,7 +163,7 @@ local usize WriteStdOut(void* Data, usize Size)
     return (Result);
 }
 
-local usize WriteStdErr(void* Data, usize Size)
+local usize WriteStdErr(void* Data, usize Size, ...)
 {
     ssize BytesWritten = (ssize)LinuxSyscall(
         SyscallNumber_Write,
