@@ -20,6 +20,7 @@ typedef union
 #define IsNilArenaID(ArenaID) ((ArenaID).U32[0] == 0)
 
 local arena_id      CreateArena                 (usize MinCommited, usize MinReserved);
+local void          DestroyArena                (arena_id ArenaID);
 local void          ResetArena                  (arena_id ArenaID);
 local void*         GetArenaBase                (arena_id ArenaID);
 local usize         GetArenaUsed                (arena_id ArenaID);
@@ -37,45 +38,77 @@ local void*         PushArenaSize               (arena_id ArenaID, usize Size);
 
 typedef struct
 {
-    void* Base;
-    usize Used;
-    usize Commited;
-    usize Reserved;
+    memory_id   MemoryID;
+    usize       Commited;
+    usize       Used;
 } arena;
 
-local arena Arenas[32] = {0};
-local u32 ArenaCount = 0;
+local arena Arenas[512] = {0};
 
 local arena* GetArena(arena_id ArenaID)
 {
     AlwaysAssert(ArenaID.U32[0] > 0);
-    AlwaysAssert(ArenaID.U32[0] < ArenaCount + 1);
+    AlwaysAssert(ArenaID.U32[0] <= ArrayCount(Arenas));
 
     arena* Arena = Arenas + (ArenaID.U32[0] - 1);
     return (Arena);
 }
 
+local arena_id FindFreeArenaSlot(void)
+{
+    arena_id ArenaID = NilArenaID;
+
+    for (u32 Index = 0; Index < ArrayCount(Arenas); Index++)
+    {
+        arena* Arena = Arenas + Index;
+
+        if (IsNilMemoryID(Arena->MemoryID))
+        {
+            ArenaID.U32[0] = 1 + Index;
+            break;
+        }
+    }
+
+    return (ArenaID);
+}
+
 local arena_id CreateArena(usize MinCommited, usize MinReserved)
 {
-    AlwaysAssert(ArenaCount < ArrayCount(Arenas));
-
-    arena_id ArenaID = {.U32[0] = 1 + ArenaCount};
-    ArenaCount++;
+    arena_id ArenaID = FindFreeArenaSlot();
+    AlwaysAssert(!IsNilArenaID(ArenaID));
 
     arena* Arena = GetArena(ArenaID);
 
-    Arena->Reserved = AlignUp(MinReserved, ArenaGranuleSize);
-    Arena->Commited = AlignUp(MinCommited, ArenaGranuleSize);
+    usize Commited = AlignUp(MinCommited, ArenaGranuleSize);
+    usize Reserved = AlignUp(MinReserved, ArenaGranuleSize);
 
-    AlwaysAssert(Arena->Reserved >  0);
-    AlwaysAssert(Arena->Reserved >= Arena->Commited);
+    Arena->MemoryID = ReserveMemory(Reserved);
+    if (IsNilMemoryID(Arena->MemoryID))
+    {
+        Println(StdErr, Str("ERROR: failed to reserve memory for arena"));
+        Exit(1);
+    }
 
-    Arena->Base = ReserveMemory(Arena->Reserved);
+    Arena->Commited = Commited;
+    Arena->Used = 0;
 
-    if (Arena->Commited)
-        CommitMemory(Arena->Base, Arena->Commited);
+    if (Commited)
+    {
+        if (!CommitMemory(Arena->MemoryID, 0, Arena->Commited))
+        {
+            Println(StdErr, Str("ERROR: failed to initially commit memory for arena"));
+            Exit(1);
+        }
+    }
 
     return (ArenaID);
+}
+
+local void DestroyArena(arena_id ArenaID)
+{
+    arena* Arena = GetArena(ArenaID);
+    ReleaseMemory(Arena->MemoryID);
+    ZeroType(Arena);
 }
 
 local void ResetArena(arena_id ArenaID)
@@ -87,7 +120,7 @@ local void ResetArena(arena_id ArenaID)
 local void* GetArenaBase(arena_id ArenaID)
 {
     arena* Arena = GetArena(ArenaID);
-    void* Result = Arena->Base;
+    void* Result = GetMemoryBase(Arena->MemoryID);
     return (Result);
 }
 
@@ -100,8 +133,7 @@ local usize GetArenaUsed(arena_id ArenaID)
 
 local void* GetArenaAllocationPointer(arena_id ArenaID)
 {
-    arena* Arena = GetArena(ArenaID);
-    void* Result = (u8*)Arena->Base + Arena->Used;
+    void* Result = (u8*)GetArenaBase(ArenaID) + GetArenaUsed(ArenaID);
     return (Result);
 }
 
@@ -113,17 +145,18 @@ local void* PushArenaSize(arena_id ArenaID, usize Size)
     {
         usize ExpandSize = (Arena->Used + Size) - Arena->Commited;
         usize CommitSize = AlignUp(ExpandSize, ArenaGranuleSize);
-        void* CommitAt   = (u8*)Arena->Base + Arena->Commited;
+        usize CommitFrom = Arena->Commited;
 
-        if (Arena->Commited + CommitSize > Arena->Reserved)
+        if (!CommitMemory(Arena->MemoryID, CommitFrom, CommitSize))
+        {
+            Println(StdErr, Str("ERROR: failed to commit more memory for arena"));
             Exit(1);
-
-        CommitMemory(CommitAt, CommitSize);
+        }
 
         Arena->Commited += CommitSize;
     }
 
-    void* Result = (u8*)Arena->Base + Arena->Used;
+    void* Result = GetArenaAllocationPointer(ArenaID);
     Arena->Used += Size;
 
     return (Result);

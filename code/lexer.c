@@ -35,6 +35,7 @@ typedef struct
 #define IsNilTokenArrayID(TokenArrayID) ((TokenArrayID).U32[0] == 0)
 
 local token_array_id    CreateTokenArray    (void);
+local void              DestroyTokenArray   (token_array_id TokenArrayID);
 local void              Tokenize            (token_array_id TokenArrayID, string Code);
 local u32               GetTokenCount       (token_array_id TokenArrayID);
 local token_kind        GetTokenKind        (token_array_id TokenArrayID, token_id TokenID);
@@ -89,13 +90,12 @@ typedef struct
 #define DefaultTokenArenaCommited (65536  * sizeof(token))
 #define DefaultTokenArenaReserved (U32Max * sizeof(token))
 
-local token_array   TokenArrays[32] = {0};
-local u32           TokenArrayCount = 0;
+local token_array TokenArrays[512] = {0};
 
 local token_array* GetTokenArray(token_array_id TokenArrayID)
 {
     AlwaysAssert(TokenArrayID.U32[0] > 0);
-    AlwaysAssert(TokenArrayID.U32[0] < TokenArrayCount + 1);
+    AlwaysAssert(TokenArrayID.U32[0] <= ArrayCount(TokenArrays));
 
     token_array* TokenArray = TokenArrays + (TokenArrayID.U32[0] - 1);
     return (TokenArray);
@@ -128,22 +128,52 @@ local void PushToken(token_array_id TokenArrayID, token_kind Kind, u32 From, u32
     Token->Size = Size;
 }
 
+local token_array_id FindFreeTokenArraySlot(void)
+{
+    token_array_id TokenArrayID = NilTokenArrayID;
+
+    for (u32 Index = 0; Index < ArrayCount(TokenArrays); Index++)
+    {
+        token_array* TokenArray = TokenArrays + Index;
+
+        if (IsNilArenaID(TokenArray->TokenArenaID))
+        {
+            TokenArrayID.U32[0] = 1 + Index;
+            break;
+        }
+    }
+
+    return (TokenArrayID);
+}
+
 local token_array_id CreateTokenArray(void)
 {
-    AlwaysAssert(TokenArrayCount < ArrayCount(TokenArrays));
-
-    token_array_id TokenArrayID = {.U32[0] = 1 + TokenArrayCount};
-    TokenArrayCount++;
+    token_array_id TokenArrayID = FindFreeTokenArraySlot();
+    AlwaysAssert(!IsNilTokenArrayID(TokenArrayID));
 
     token_array* TokenArray = GetTokenArray(TokenArrayID);
 
     TokenArray->Code = NilString;
+
     TokenArray->TokenArenaID = CreateArena(
         DefaultTokenArenaCommited,
         DefaultTokenArenaReserved
     );
 
+    if (IsNilArenaID(TokenArray->TokenArenaID))
+    {
+        Println(StdErr, Str("ERROR: failed to create token arena for token array"));
+        Exit(1);
+    }
+
     return (TokenArrayID);
+}
+
+local void DestroyTokenArray(token_array_id TokenArrayID)
+{
+    token_array* TokenArray = GetTokenArray(TokenArrayID);
+    DestroyArena(TokenArray->TokenArenaID);
+    ZeroType(TokenArray);
 }
 
 local usize CountWhitespaceAt(string Code, usize Index)

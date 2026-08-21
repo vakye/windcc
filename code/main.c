@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "memory.c"
 #include "print.c"
+#include "memory.c"
 #include "character.c"
 #include "lexer.c"
 

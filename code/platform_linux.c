@@ -77,7 +77,7 @@ local usize LinuxSyscall(
 // NOTE(vak): Memory
 // ==========================================================================================
 
-local void* ReserveMemory(usize Size)
+local memory_id ReserveMemory(usize Size)
 {
     ssize MapResult = (ssize)LinuxSyscall(
         SyscallNumber_MMap,
@@ -89,60 +89,90 @@ local void* ReserveMemory(usize Size)
         0
     );
 
-    if (MapResult < 0)
-        Exit(-MapResult);
+    memory_id Result = {0};
 
-    void* Result = (void*)MapResult;
+    if (MapResult > 0)
+    {
+        Result.U64[0] = (usize)MapResult;
+        Result.U64[1] = (usize)Size;
+    }
+
     return (Result);
 }
 
-local void CommitMemory(void* Memory, usize Size)
+local b32 ReleaseMemory(memory_id MemoryID)
 {
+    if (IsNilMemoryID(MemoryID))
+        return (false);
+
+    usize Base = (usize)GetMemoryBase(MemoryID);
+    usize Size = (usize)GetMemorySize(MemoryID);
+
+    ssize ReleaseResult = LinuxSyscall(
+        SyscallNumber_MUnMap,
+        Base,
+        Size,
+        0, 0, 0, 0
+    );
+
+    b32 Result = (ReleaseResult >= 0);
+    return (Result);
+}
+
+local void* GetMemoryBase(memory_id MemoryID)
+{
+    void* Result = (void*)(MemoryID.U64[0]);
+    return (Result);
+}
+
+local usize GetMemorySize(memory_id MemoryID)
+{
+    usize Result = (MemoryID.U64[1]);
+    return (Result);
+}
+
+local b32 CommitMemory(memory_id MemoryID, usize From, usize Size)
+{
+    if (IsNilMemoryID(MemoryID))
+        return (false);
+
+    if (From + Size > GetMemorySize(MemoryID))
+        return (false);
+
+    u8* CommitAt = (u8*)GetMemoryBase(MemoryID) + From;
+
     ssize CommitResult = (ssize)LinuxSyscall(
         SyscallNumber_MProtect,
-        (usize)Memory,
+        (usize)CommitAt,
         Size,
         PROT_READ|PROT_WRITE,
         0, 0, 0
     );
 
-    if (CommitResult < 0)
-        Exit(-CommitResult);
-}
-
-local void* MapExecutableMemory(void* Data, usize Size)
-{
-    ssize MapResult = (ssize)LinuxSyscall(
-        SyscallNumber_MMap,
-        0,
-        Size,
-        PROT_READ|PROT_WRITE|PROT_EXEC,
-        MAP_PRIVATE|MAP_ANONYMOUS,
-        -1,
-        0
-    );
-
-    if (MapResult < 0)
-        Exit(-MapResult);
-
-    void* Result = (void*)MapResult;
-
-    CopyMemory(Result, Data, Size);
-
+    b32 Result = (CommitResult >= 0);
     return (Result);
 }
 
-local void UnmapExecutableMemory(void* Memory, usize Size)
+local b32 DecommitMemory(memory_id MemoryID, usize From, usize Size)
 {
-    ssize UnmapResult = (ssize)LinuxSyscall(
-        SyscallNumber_MUnMap,
-        (usize)Memory,
+    if (IsNilMemoryID(MemoryID))
+        return (false);
+
+    if (From + Size > GetMemorySize(MemoryID))
+        return (false);
+
+    u8* DecommitAt = (u8*)GetMemoryBase(MemoryID) + From;
+
+    ssize DecommitResult = (ssize)LinuxSyscall(
+        SyscallNumber_MProtect,
+        (usize)DecommitAt,
         Size,
-        0, 0, 0, 0
+        PROT_NONE,
+        0, 0, 0
     );
 
-    if (UnmapResult < 0)
-        Exit(-UnmapResult);
+    b32 Result = (DecommitResult >= 0);
+    return (Result);
 }
 
 // ==========================================================================================
