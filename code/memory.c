@@ -29,10 +29,12 @@ typedef struct
     usize Reserved;
 } arena;
 
-local arena_id CreateArena(usize MinCommited, usize MinReserved);
-local void ResetArena(arena_id ArenaID);
-local void* GetArenaAllocationPointer(arena_id ArenaID);
-local void* PushArenaSize(arena_id ArenaID, usize Size);
+local arena_id      CreateArena                 (usize MinCommited, usize MinReserved);
+local void          ResetArena                  (arena_id ArenaID);
+local void*         GetArenaBase                (arena_id ArenaID);
+local usize         GetArenaUsed                (arena_id ArenaID);
+local void*         GetArenaAllocationPointer   (arena_id ArenaID);
+local void*         PushArenaSize               (arena_id ArenaID, usize Size);
 
 #define PushArena(ArenaID, Type)                (Type*)PushArenaSize(ArenaID, sizeof(Type))
 #define PushArenaArray(ArenaID, Type, Count)    (Type*)PushArenaSize(ArenaID, sizeof(Type) * (Count))
@@ -80,6 +82,20 @@ local void ResetArena(arena_id ArenaID)
 {
     arena* Arena = GetArena(ArenaID);
     Arena->Used = 0;
+}
+
+local void* GetArenaBase(arena_id ArenaID)
+{
+    arena* Arena = GetArena(ArenaID);
+    void* Result = Arena->Base;
+    return (Result);
+}
+
+local usize GetArenaUsed(arena_id ArenaID)
+{
+    arena* Arena = GetArena(ArenaID);
+    usize Result = Arena->Used;
+    return (Result);
 }
 
 local void* GetArenaAllocationPointer(arena_id ArenaID)

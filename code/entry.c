@@ -5,8 +5,6 @@
 
 #include "shared.c"
 #include "platform.c"
-#include "memory.c"
-#include "print.c"
 #include "main.c"
 
 #if PlatformLinux
