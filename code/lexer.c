@@ -41,6 +41,32 @@ local token_kind        GetTokenKind        (token_array_id TokenArrayID, token_
 local string            GetTokenString      (token_array_id TokenArrayID, token_id TokenID);
 local usize             GetTokenInteger     (token_array_id TokenArrayID, token_id TokenID);
 
+// NOTE(vak): Example usage:
+//
+//      string Code = Str("int main () { __hello + world_23_() * (10 + 10) / 120; }");
+//
+//      token_array_id TokenArrayID = CreateTokenArray();
+//      Tokenize(TokenArrayID, Code);
+//
+//      u32 TokenCount = GetTokenCount(TokenArrayID);
+//      for (token_id TokenID = 0; TokenID < TokenCount; TokenID++)
+//      {
+//          Println(GetTokenString(TokenArrayID, TokenID));
+//
+//          token_kind TokenKind = GetTokenKind(TokenArrayID, TokenID);
+//          if (TokenKind == '+')
+//          {
+//              ...
+//          }
+//          else if (TokenKind == TokenKind_Integer)
+//          {
+//              usize Value = GetTokenInteger(TokenArrayID, TokenID);
+//              ...
+//          }
+//          ...
+//      }
+//
+
 // ==========================================================================================
 // NOTE(vak): Implementation
 // ==========================================================================================
@@ -57,6 +83,9 @@ typedef struct
     string      Code;
     arena_id    TokenArenaID;
 } token_array;
+
+#define DefaultTokenArenaCommited (65536  * sizeof(token))
+#define DefaultTokenArenaReserved (U32Max * sizeof(token))
 
 local token_array   TokenArrays[32] = {0};
 local u32           TokenArrayCount = 0;
@@ -107,7 +136,10 @@ local token_array_id CreateTokenArray(void)
     token_array* TokenArray = GetTokenArray(TokenArrayID);
 
     TokenArray->Code = NilString;
-    TokenArray->TokenArenaID = CreateArena(MB(4), GB(16));
+    TokenArray->TokenArenaID = CreateArena(
+        DefaultTokenArenaCommited,
+        DefaultTokenArenaReserved
+    );
 
     return (TokenArrayID);
 }
@@ -157,7 +189,7 @@ local token TokenizeIdentifier(string Code, usize Index)
     {
         .Kind = TokenKind_Identifier,
         .From = Index,
-        .Size = 1, // NOTE(vak): We already know first character is an identifier start
+        .Size = 1, // NOTE(vak): We already know first character is an IdentifierStart
     };
 
     while (Index + Token.Size < Code.Size)
@@ -191,6 +223,12 @@ local void Tokenize(token_array_id TokenArrayID, string Code)
 
     ResetArena(TokenArray->TokenArenaID);
     TokenArray->Code = Code;
+
+    if (Code.Size > U32Max)
+    {
+        Println(Str("ERROR: Code passed to compiler lexer is larger than 4GB (U32Max)"));
+        Exit(1);
+    }
 
     usize Index = 0;
 
