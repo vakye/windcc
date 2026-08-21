@@ -33,7 +33,7 @@ typedef enum
 
 typedef u32 token_id;
 
-typedef struct
+typedef union
 {
     u32 U32[1];
     u16 U16[2];
