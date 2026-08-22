@@ -108,11 +108,6 @@ local node_id Parse(token_array Tokens)
     return (Result);
 }
 
-local void SetParserTarget(token_array Tokens)
-{
-    ParsingTokens = Tokens;
-}
-
 local node* GetNode(node_id NodeID)
 {
     persist node NilNode = {0};
@@ -238,6 +233,11 @@ local node_id PushBinaryNode(node_kind Kind, token_id TokenID, node_id Left, nod
     Node->Binary.Right = Right;
 
     return (NodeID);
+}
+
+local void SetParserTarget(token_array Tokens)
+{
+    ParsingTokens = Tokens;
 }
 
 local token_id ParserCurrent(void)

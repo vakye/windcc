@@ -175,6 +175,34 @@ local b32 DecommitMemory(memory_id MemoryID, usize From, usize Size)
     return (Result);
 }
 
+local b32 ProtectMemory(memory_id MemoryID, usize From, usize Size, memory_protection_flags Flags)
+{
+    if (IsNilMemoryID(MemoryID))
+        return (false);
+
+    if (From + Size > GetMemorySize(MemoryID))
+        return (false);
+
+    usize LinuxProtectionFlags = PROT_NONE;
+
+    if (Flags & MemoryProtectionFlag_Readable)      LinuxProtectionFlags |= PROT_READ;
+    if (Flags & MemoryProtectionFlag_Writeable)     LinuxProtectionFlags |= PROT_WRITE;
+    if (Flags & MemoryProtectionFlag_Executable)    LinuxProtectionFlags |= PROT_EXEC;
+
+    u8* ProtectAt = (u8*)GetMemoryBase(MemoryID) + From;
+
+    ssize ProtectResult = (ssize)LinuxSyscall(
+        SyscallNumber_MProtect,
+        (usize)ProtectAt,
+        Size,
+        LinuxProtectionFlags,
+        0, 0, 0
+    );
+
+    b32 Result = (ProtectResult >= 0);
+    return (Result);
+}
+
 // ==========================================================================================
 // NOTE(vak): Console
 // ==========================================================================================

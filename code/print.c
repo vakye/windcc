@@ -34,7 +34,7 @@ local usize Print           (print_out Out, string Message);
 local usize Println         (print_out Out, string Message);
 local usize PrintUSize      (print_out Out, usize Value);
 local usize PrintSSize      (print_out Out, ssize Value);
-local void  RightPadOutput  (print_out Out, usize Written, usize Padding);
+local usize RightPadOutput  (print_out Out, usize Written, usize Padding);
 
 // ==========================================================================================
 // NOTE(vak): Implementation
@@ -117,11 +117,13 @@ local usize PrintSSize(print_out Out, ssize Value)
     return (Result);
 }
 
-local void RightPadOutput(print_out Out, usize Written, usize Padding)
+local usize RightPadOutput(print_out Out, usize Written, usize Padding)
 {
     while (Written < Padding)
     {
         Written += PrintCharacter(Out, ' ');
     }
+
+    return (Written);
 }
 

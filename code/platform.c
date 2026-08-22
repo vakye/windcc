@@ -26,12 +26,21 @@ typedef union
 #define NilMemoryID (memory_id){0}
 #define IsNilMemoryID(MemoryID) (((MemoryID).U64[0] == 0) || ((MemoryID.U64[1]) == 0))
 
+typedef enum
+{
+    MemoryProtectionFlag_None       = (0),
+    MemoryProtectionFlag_Readable   = (1 << 0),
+    MemoryProtectionFlag_Writeable  = (1 << 1),
+    MemoryProtectionFlag_Executable = (1 << 2),
+} memory_protection_flags;
+
 local memory_id ReserveMemory   (usize Size);
 local b32       ReleaseMemory   (memory_id MemoryID);
 local void*     GetMemoryBase   (memory_id MemoryID);
 local usize     GetMemorySize   (memory_id MemoryID);
 local b32       CommitMemory    (memory_id MemoryID, usize From, usize Size);
 local b32       DecommitMemory  (memory_id MemoryID, usize From, usize Size);
+local b32       ProtectMemory   (memory_id MemoryID, usize From, usize Size, memory_protection_flags Flags);
 
 local usize     WriteStdOut     (void* Data, usize Size, ...);
 local usize     WriteStdErr     (void* Data, usize Size, ...);

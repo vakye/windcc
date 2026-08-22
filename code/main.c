@@ -13,20 +13,49 @@
 #include "print.c"
 #include "lexer.c"
 #include "parser.c"
+#include "generator_x64.c"
 
 // ==========================================================================================
 // NOTE(vak): Main
 // ==========================================================================================
 
+typedef ssize program_entry(void);
+
+local ssize CallMachineCode(void* Code, usize Size)
+{
+    memory_id ExecutableMemoryID = ReserveMemory(Size);
+
+    memory_protection_flags ProtectionFlags =
+        MemoryProtectionFlag_Readable   |
+        MemoryProtectionFlag_Writeable  |
+        MemoryProtectionFlag_Executable;
+
+    CommitMemory(ExecutableMemoryID, 0, Size);
+    ProtectMemory(ExecutableMemoryID, 0, Size, ProtectionFlags);
+
+    CopyMemory(GetMemoryBase(ExecutableMemoryID), Code, Size);
+
+    program_entry* ProgramEntry = (program_entry*)GetMemoryBase(ExecutableMemoryID);
+
+    ssize Result = ProgramEntry();
+
+    ReleaseMemory(ExecutableMemoryID);
+
+    return (Result);
+}
+
 local void Main(void)
 {
-    string Code = Str("120 / 2*(10 + 10)");
+    string Code = Str("100");
 
     SetupLexer();
     SetupParser();
+    x64_SetupGenerator();
 
-    token_array Tokens = Tokenize(Code);
-    node_id Node = Parse(Tokens);
+    token_array Tokens          = Tokenize(Code);
+    node_id     Node            = Parse(Tokens);
+    x64_code    Generated       = x64_Generate(Node);
+    usize       ExecutionResult = CallMachineCode(Generated.Base, Generated.Size);
 
     // NOTE(vak): Original code string
     {
@@ -58,6 +87,13 @@ local void Main(void)
     {
         Println(StdOut, Str("Parser output:"));
         PrintNode(StdOut, Node);
+    }
+
+    // NOTE(vak): Execution result
+    {
+        Print(StdOut, Str("Execution result: "));
+        PrintSSize(StdOut, ExecutionResult);
+        PrintNewLine(StdOut);
     }
 }
 
