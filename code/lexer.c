@@ -162,7 +162,7 @@ local token_array_id CreateTokenArray(void)
 
     token_array* TokenArray = GetTokenArray(TokenArrayID);
 
-    TokenArray->Code = NilString;
+    ZeroType(TokenArray);
 
     TokenArray->TokenArenaID = CreateArena(
         DefaultTokenArenaCommited,
