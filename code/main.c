@@ -22,12 +22,11 @@ local void Main(void)
 {
     string Code = Str("120 / 2*(10 + 10)");
 
-    token_array_id  TokenArrayID    = CreateTokenArray();
-    parser_id       ParserID        = CreateParser();
+    SetupLexer();
+    SetupParser();
 
-    Tokenize(TokenArrayID, Code);
-
-    node_id RootNode = Parse(ParserID, TokenArrayID);
+    token_array Tokens = Tokenize(Code);
+    node_id Node = Parse(Tokens);
 
     // NOTE(vak): Original code string
     {
@@ -41,14 +40,15 @@ local void Main(void)
     {
         Println(StdOut, Str("Tokenizer output:"));
 
-        u32 TokenCount = GetTokenCount(TokenArrayID);
-        for (token_id TokenID = 0; TokenID < TokenCount; TokenID++)
+        for (u32 Offset = 0; Offset < Tokens.Count; Offset ++)
         {
+            token_id TokenID = Tokens.First + Offset;
+
             Print(StdOut, Str("    "));
             Print(StdOut, Str("TokenID = "));
             RightPadOutput(StdOut, PrintUSize(StdOut, TokenID), 16);
             Print(StdOut, Str("String = '"));
-            Print(StdOut, GetTokenString(TokenArrayID, TokenID));
+            Print(StdOut, GetTokenString(TokenID));
             Print(StdOut, Str("'"));
             PrintNewLine(StdOut);
         }
@@ -57,7 +57,7 @@ local void Main(void)
     // NOTE(vak): Parser output
     {
         Println(StdOut, Str("Parser output:"));
-        PrintNode(StdOut, ParserID, RootNode);
+        PrintNode(StdOut, Node);
     }
 }
 
