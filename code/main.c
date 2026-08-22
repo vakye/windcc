@@ -46,7 +46,7 @@ local ssize CallMachineCode(void* Code, usize Size)
 
 local void Main(void)
 {
-    string Code = Str("100");
+    string Code = Str("1 + 2 + 3 + 4 + 5 + 6 + 7 + 8 + 9 + 10");
 
     SetupLexer();
     SetupParser();
